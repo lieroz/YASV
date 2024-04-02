@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:YASV.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        x:Class="YASV.Views.MainWindow"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="YASV">
+
+    <!--https://docs.avaloniaui.net/docs/reference/controls/splitview-->
+    <SplitView IsPaneOpen="True" DisplayMode="Inline" OpenPaneLength="300">
+        <SplitView.Pane>
+            <TextBlock Text="PlaceHolder"
+                   FontSize="24"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Center"/>
+        </SplitView.Pane>
+        <vm:SilkNETWindow/>
+    </SplitView>
+
+</Window>

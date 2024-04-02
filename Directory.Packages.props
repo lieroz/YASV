@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <AvaloniaVersion>11.0.10</AvaloniaVersion>
+    <SilkNETVersion>2.20.0</SilkNETVersion>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!--Avalonia-->
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+    <PackageVersion Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.ReactiveUI" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <!--Silk.NET-->
+  <ItemGroup>
+    <PackageVersion Include="Silk.NET.Input" Version="$(SilkNETVersion)" />
+    <PackageVersion Include="Silk.NET.Maths" Version="$(SilkNETVersion)" />
+    <PackageVersion Include="Silk.NET.Vulkan" Version="$(SilkNETVersion)" />
+    <PackageVersion Include="Silk.NET.Windowing" Version="$(SilkNETVersion)" />
+    <PackageVersion Include="Silk.NET.Windowing.Sdl" Version="$(SilkNETVersion)" />
+  </ItemGroup>
+
+</Project>
