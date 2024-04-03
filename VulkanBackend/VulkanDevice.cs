@@ -1,6 +1,6 @@
 using Silk.NET.Vulkan;
 
-namespace YASV.Vulkan;
+namespace YASV.VulkanBackend;
 
 public class VulkanDevice
 {
