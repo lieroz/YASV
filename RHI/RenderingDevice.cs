@@ -4,5 +4,7 @@ using Silk.NET.SDL;
 
 public abstract class RenderingDevice
 {
-    public abstract void Initialize(Sdl sdlApi);
+    public abstract void Create(Sdl sdlApi);
+
+    public abstract void Destroy();
 }

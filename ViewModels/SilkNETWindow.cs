@@ -26,11 +26,11 @@ public class SilkNETWindow : NativeControlHost
 
         if (sdlApi.VulkanLoadLibrary((byte*)null) == -1)
         {
-            throw new SymbolLoadingException($"{sdlApi.GetErrorS()}");
+            throw new SymbolLoadingException(sdlApi.GetErrorS());
         }
 
         this.renderingDevice = new VulkanDevice();
-        this.renderingDevice.Initialize(sdlApi);
+        this.renderingDevice.Create(sdlApi);
 
         this.window.Update += (delta) => { };
         this.window.Render += (delta) => { };
@@ -46,6 +46,8 @@ public class SilkNETWindow : NativeControlHost
 
         return new PlatformHandle(this.window.Handle, nameof(SilkNETWindow));
     }
+
+    protected override void DestroyNativeControlCore(IPlatformHandle control) => this.renderingDevice?.Destroy();
 
     protected override unsafe void OnSizeChanged(SizeChangedEventArgs e)
     {
