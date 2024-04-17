@@ -1,9 +1,8 @@
-using System;
+namespace YASV.Views;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
-
-namespace YASV.Views;
 
 public partial class MainWindow : Window
 {

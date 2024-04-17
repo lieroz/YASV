@@ -1,42 +1,55 @@
-using System.Threading.Tasks;
+namespace YASV.ViewModels;
+
+using System;
+using System.Collections.Concurrent;
 using Avalonia.Controls;
 using Avalonia.Platform;
-using Silk.NET.Core.Native;
+using Silk.NET.Core.Loader;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
 using Silk.NET.Windowing.Sdl;
-
-namespace YASV.ViewModels;
+using YASV.RHI;
+using SDLThread = System.Threading.Thread;
 
 public class SilkNETWindow : NativeControlHost
 {
-    IView? window = null;
+    private IView? window;
+    private RenderingDevice? renderingDevice;
+    private SDLThread? sdlThread;
+    private readonly ConcurrentQueue<Action> sdlActions = new();
 
-    protected unsafe override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
+    protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
-        // TODO: vulkan context
-        window = SdlWindowing.CreateFrom((void*)parent.Handle);
+        this.window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
-        // var sdlApi = Sdl.GetApi();
+        var sdlApi = Sdl.GetApi();
 
-        // VkHandle instance = new();
-        // VkNonDispatchableHandle surface;
-        // sdlApi.VulkanCreateSurface((Silk.NET.SDL.Window*)window.Handle.ToPointer(), instance, &surface);
+        if (sdlApi.VulkanLoadLibrary((byte*)null) == -1)
+        {
+            throw new SymbolLoadingException($"{sdlApi.GetErrorS()}");
+        }
 
-        window.Update += (delta) => {};
-        window.Render += (delta) => {};
+        this.renderingDevice = new VulkanDevice();
+        this.renderingDevice.Initialize(sdlApi);
 
-        Task.Run(window.Run);
+        this.window.Update += (delta) => { };
+        this.window.Render += (delta) => { };
 
-        return new PlatformHandle(window.Handle, nameof(SilkNETWindow));
+        this.sdlThread = new(() =>
+        {
+            while (this.sdlActions.TryDequeue(out var action))
+            {
+                action();
+            }
+        });
+        this.sdlThread.Start();
+
+        return new PlatformHandle(this.window.Handle, nameof(SilkNETWindow));
     }
 
-    protected unsafe override void OnSizeChanged(SizeChangedEventArgs e)
+    protected override unsafe void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
-        if (window != null)
-        {
-            Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)window.Handle.ToPointer(), (int)e.NewSize.Width, (int)e.NewSize.Height);
-        }
+        this.sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)this.window!.Handle.ToPointer(), (int)e.NewSize.Width, (int)e.NewSize.Height));
     }
 }
