@@ -22,6 +22,7 @@
     <PackageVersion Include="Silk.NET.Input" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Maths" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Vulkan" Version="$(SilkNETVersion)" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Windowing" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Windowing.Sdl" Version="$(SilkNETVersion)" />
   </ItemGroup>
