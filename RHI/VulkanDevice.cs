@@ -1,5 +1,3 @@
-namespace YASV.RHI;
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +8,8 @@ using Silk.NET.Core.Native;
 using Silk.NET.SDL;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
+
+namespace YASV.RHI;
 
 internal sealed class VulkanException(string? message = null) : Exception(message)
 {
@@ -40,24 +40,24 @@ public class VulkanDevice : RenderingDevice
 
     public override unsafe void Create(Sdl sdlApi)
     {
-        this.CreateInstance(sdlApi);
+        CreateInstance(sdlApi);
 #if DEBUG
-        this.SetupDebugMessenger();
+        SetupDebugMessenger();
 #endif
     }
 
     public override unsafe void Destroy()
     {
 #if DEBUG
-        this.extDebugUtils?.DestroyDebugUtilsMessenger(this.instance, this.debugMessenger, null);
+        extDebugUtils?.DestroyDebugUtilsMessenger(instance, debugMessenger, null);
 #endif
-        this.DestroyInstance();
+        DestroyInstance();
     }
 
     private unsafe void CreateInstance(Sdl sdlApi)
     {
 #if DEBUG
-        VulkanException.ThrowsIf(!this.CheckValidationLayersSupport(), "Validation layers were requested, but none available found.");
+        VulkanException.ThrowsIf(!CheckValidationLayersSupport(), "Validation layers were requested, but none available found.");
 #endif
 
         var applicationName = (byte*)SilkMarshal.StringToPtr("YASV");
@@ -92,7 +92,7 @@ public class VulkanDevice : RenderingDevice
         instanceCreateInfo.PNext = &debugMessengerCreateInfo;
 #endif
 
-        var result = this.vk.CreateInstance(instanceCreateInfo, null, out this.instance);
+        var result = vk.CreateInstance(instanceCreateInfo, null, out instance);
 
         SilkMarshal.Free((nint)applicationName);
         SilkMarshal.Free((nint)engineName);
@@ -109,13 +109,13 @@ public class VulkanDevice : RenderingDevice
     {
         uint layerCount = 0;
 
-        var result = this.vk.EnumerateInstanceLayerProperties(&layerCount, null);
+        var result = vk.EnumerateInstanceLayerProperties(&layerCount, null);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't determine instance layer properties count: {result}.");
 
         var availableLayersProperties = new LayerProperties[layerCount];
         fixed (LayerProperties* layerPropertiesPtr = availableLayersProperties)
         {
-            result = this.vk.EnumerateInstanceLayerProperties(&layerCount, availableLayersProperties);
+            result = vk.EnumerateInstanceLayerProperties(&layerCount, availableLayersProperties);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't enumerate instance layer properties: {result}.");
         }
 
@@ -169,12 +169,12 @@ public class VulkanDevice : RenderingDevice
 
     private unsafe void SetupDebugMessenger()
     {
-        VulkanException.ThrowsIf(!this.vk.TryGetInstanceExtension(this.instance, out this.extDebugUtils), "Couldn't get 'VK_EXT_debug_utils' extension.");
+        VulkanException.ThrowsIf(!vk.TryGetInstanceExtension(instance, out extDebugUtils), "Couldn't get 'VK_EXT_debug_utils' extension.");
 
-        var result = this.extDebugUtils!.CreateDebugUtilsMessenger(this.instance, GetDebugMessengerCreateInfo(), null, out this.debugMessenger);
+        var result = extDebugUtils!.CreateDebugUtilsMessenger(instance, GetDebugMessengerCreateInfo(), null, out debugMessenger);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't set up debug messenger: {result}.");
     }
 #endif
 
-    private unsafe void DestroyInstance() => this.vk.DestroyInstance(this.instance, null);
+    private unsafe void DestroyInstance() => vk.DestroyInstance(instance, null);
 }

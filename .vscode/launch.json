@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "YASV Debug",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "Build: Debug",
+            "program": "${workspaceFolder}/bin/Debug/net8.0/YASV.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "internalConsoleOptions": "openOnSessionStart",
+        },
+        {
+            "name": "YASV Release",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "Build: Release",
+            "program": "${workspaceFolder}/bin/Release/net8.0/YASV.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "internalConsoleOptions": "openOnSessionStart",
+        },
+    ]
+}

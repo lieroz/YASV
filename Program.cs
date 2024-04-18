@@ -1,8 +1,8 @@
-﻿namespace YASV;
-
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.ReactiveUI;
 using System;
+
+namespace YASV;
 
 internal sealed class Program
 {

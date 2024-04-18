@@ -1,5 +1,3 @@
-namespace YASV.ViewModels;
-
 using System;
 using System.Collections.Concurrent;
 using Avalonia.Controls;
@@ -11,16 +9,18 @@ using Silk.NET.Windowing.Sdl;
 using YASV.RHI;
 using SDLThread = System.Threading.Thread;
 
+namespace YASV.ViewModels;
+
 public class SilkNETWindow : NativeControlHost
 {
-    private IView? window;
-    private RenderingDevice? renderingDevice;
-    private SDLThread? sdlThread;
-    private readonly ConcurrentQueue<Action> sdlActions = new();
+    private IView? _window;
+    private RenderingDevice? _renderingDevice;
+    private SDLThread? _sdlThread;
+    private readonly ConcurrentQueue<Action> _sdlActions = new();
 
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
-        this.window = SdlWindowing.CreateFrom((void*)parent.Handle);
+        _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
         var sdlApi = Sdl.GetApi();
 
@@ -29,29 +29,29 @@ public class SilkNETWindow : NativeControlHost
             throw new SymbolLoadingException(sdlApi.GetErrorS());
         }
 
-        this.renderingDevice = new VulkanDevice();
-        this.renderingDevice.Create(sdlApi);
+        _renderingDevice = new VulkanDevice();
+        _renderingDevice.Create(sdlApi);
 
-        this.window.Update += (delta) => { };
-        this.window.Render += (delta) => { };
+        _window.Update += (delta) => { };
+        _window.Render += (delta) => { };
 
-        this.sdlThread = new(() =>
+        _sdlThread = new(() =>
         {
-            while (this.sdlActions.TryDequeue(out var action))
+            while (_sdlActions.TryDequeue(out var action))
             {
                 action();
             }
         });
-        this.sdlThread.Start();
+        _sdlThread.Start();
 
-        return new PlatformHandle(this.window.Handle, nameof(SilkNETWindow));
+        return new PlatformHandle(_window.Handle, nameof(SilkNETWindow));
     }
 
-    protected override void DestroyNativeControlCore(IPlatformHandle control) => this.renderingDevice?.Destroy();
+    protected override void DestroyNativeControlCore(IPlatformHandle control) => _renderingDevice?.Destroy();
 
     protected override unsafe void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
-        this.sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)this.window!.Handle.ToPointer(), (int)e.NewSize.Width, (int)e.NewSize.Height));
+        _sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)_window!.Handle.ToPointer(), (int)e.NewSize.Width, (int)e.NewSize.Height));
     }
 }

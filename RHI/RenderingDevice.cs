@@ -1,6 +1,6 @@
-namespace YASV.RHI;
-
 using Silk.NET.SDL;
+
+namespace YASV.RHI;
 
 public abstract class RenderingDevice
 {
