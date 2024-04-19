@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "YASV Debug",
+            "name": "Debug",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "Build: Debug",
@@ -14,7 +14,7 @@
             "internalConsoleOptions": "openOnSessionStart",
         },
         {
-            "name": "YASV Release",
+            "name": "Release",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "Build: Release",
