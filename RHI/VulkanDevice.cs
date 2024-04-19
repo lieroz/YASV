@@ -40,10 +40,12 @@ public class VulkanDevice : RenderingDevice
     private PhysicalDevice _physicalDevice;
     private struct QueueFamilyIndices
     {
-        public int? Graphics { get; set; }
+        public uint? Graphics { get; set; }
 
         public readonly bool IsComplete() => Graphics.HasValue;
     }
+    private Device _device;
+    private Queue _graphicsQueue;
 
     public override unsafe void Create(Sdl sdlApi)
     {
@@ -52,10 +54,12 @@ public class VulkanDevice : RenderingDevice
         SetupDebugMessenger();
 #endif
         PickPhysicalDevice();
+        CreateLogicalDevice();
     }
 
     public override unsafe void Destroy()
     {
+        DestroyDevice();
 #if DEBUG
         _extDebugUtils?.DestroyDebugUtilsMessenger(_instance, _debugMessenger, null);
 #endif
@@ -90,6 +94,7 @@ public class VulkanDevice : RenderingDevice
             PApplicationInfo = &applicationInfo,
             EnabledExtensionCount = (uint)extensions.Length,
             PpEnabledExtensionNames = (byte**)SilkMarshal.StringArrayToPtr(extensions),
+            EnabledLayerCount = 0
         };
 
 #if DEBUG
@@ -197,7 +202,7 @@ public class VulkanDevice : RenderingDevice
             _vk.GetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamiliesPtr);
         }
 
-        for (int i = 0; i < queueFamilyCount && !queueFamilyIndices.IsComplete(); i++)
+        for (uint i = 0; i < queueFamilyCount && !queueFamilyIndices.IsComplete(); i++)
         {
             if (queueFamilies[i].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
             {
@@ -263,5 +268,48 @@ public class VulkanDevice : RenderingDevice
             $"\tMemorySize: {(double)maxMemorySize / 1024 / 1024 / 1024:F3} Gib\n");
     }
 
+    private unsafe void CreateLogicalDevice()
+    {
+        var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
+        var queuePriority = 1f;
+
+        DeviceQueueCreateInfo deviceQueueCreateInfo = new()
+        {
+            SType = StructureType.DeviceQueueCreateInfo,
+            QueueFamilyIndex = queueFamilyIndices.Graphics!.Value,
+            QueueCount = 1,
+            PQueuePriorities = &queuePriority
+        };
+
+        PhysicalDeviceFeatures physicalDeviceFeatures;
+
+        DeviceCreateInfo deviceCreateInfo = new()
+        {
+            SType = StructureType.DeviceCreateInfo,
+            PQueueCreateInfos = &deviceQueueCreateInfo,
+            QueueCreateInfoCount = 1,
+            PEnabledFeatures = &physicalDeviceFeatures,
+            EnabledExtensionCount = 0,
+            EnabledLayerCount = 0
+        };
+
+#if DEBUG
+        deviceCreateInfo.EnabledLayerCount = (uint)_validationLayers.Length;
+        deviceCreateInfo.PpEnabledLayerNames = (byte**)SilkMarshal.StringArrayToPtr(_validationLayers);
+#endif
+
+        var result = _vk.CreateDevice(_physicalDevice, &deviceCreateInfo, null, out _device);
+
+#if DEBUG
+        SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledLayerNames);
+#endif
+
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create logical device: {result}.");
+
+        _graphicsQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Graphics!.Value, 0);
+    }
+
     private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
+
+    private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
 }
