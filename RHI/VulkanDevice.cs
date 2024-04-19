@@ -8,6 +8,8 @@ using Silk.NET.Core.Native;
 using Silk.NET.SDL;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
+using Silk.NET.Vulkan.Extensions.KHR;
+using Silk.NET.Windowing;
 
 namespace YASV.RHI;
 
@@ -37,22 +39,28 @@ public class VulkanDevice : RenderingDevice
     private ExtDebugUtils? _extDebugUtils;
     private DebugUtilsMessengerEXT _debugMessenger;
 #endif
+    private KhrSurface? _khrSurface;
+    private SurfaceKHR _surfaceKHR;
     private PhysicalDevice _physicalDevice;
     private struct QueueFamilyIndices
     {
         public uint? Graphics { get; set; }
+        public uint? Present { get; set; }
 
-        public readonly bool IsComplete() => Graphics.HasValue;
+        public readonly bool IsComplete() => Graphics.HasValue
+                                          && Present.HasValue;
     }
     private Device _device;
     private Queue _graphicsQueue;
+    private Queue _presentQueue;
 
-    public override unsafe void Create(Sdl sdlApi)
+    public override unsafe void Create(Sdl sdlApi, IView view)
     {
-        CreateInstance(sdlApi);
+        CreateInstance(sdlApi, view);
 #if DEBUG
         SetupDebugMessenger();
 #endif
+        CreateSurface(sdlApi, view);
         PickPhysicalDevice();
         CreateLogicalDevice();
     }
@@ -63,10 +71,11 @@ public class VulkanDevice : RenderingDevice
 #if DEBUG
         _extDebugUtils?.DestroyDebugUtilsMessenger(_instance, _debugMessenger, null);
 #endif
+        DestroySurface();
         DestroyInstance();
     }
 
-    private unsafe void CreateInstance(Sdl sdlApi)
+    private unsafe void CreateInstance(Sdl sdlApi, IView view)
     {
 #if DEBUG
         VulkanException.ThrowsIf(!CheckValidationLayersSupport(), "Validation layers were requested, but none available found.");
@@ -86,7 +95,7 @@ public class VulkanDevice : RenderingDevice
             ApiVersion = Vk.Version13,
         };
 
-        var extensions = GetRequiredExtensions(sdlApi);
+        var extensions = GetRequiredExtensions(sdlApi, view);
 
         InstanceCreateInfo instanceCreateInfo = new()
         {
@@ -137,17 +146,17 @@ public class VulkanDevice : RenderingDevice
     }
 #endif
 
-    private static unsafe string[] GetRequiredExtensions(Sdl sdlApi)
+    private static unsafe string[] GetRequiredExtensions(Sdl sdlApi, IView view)
     {
         uint count = 0;
 
-        var sdlBool = sdlApi.VulkanGetInstanceExtensions(null, &count, (byte**)null);
+        var sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, (byte**)null);
         VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't determine required extensions count: {sdlApi.GetErrorS()}.");
 
         var requiredExtensions = (byte**)Marshal.AllocHGlobal((nint)(sizeof(byte*) * count));
         using var defer = Disposable.Create(() => Marshal.FreeHGlobal((nint)requiredExtensions));
 
-        sdlBool = sdlApi.VulkanGetInstanceExtensions(null, &count, requiredExtensions);
+        sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, requiredExtensions);
         VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't get required extensions: {sdlApi.GetErrorS()}.");
 
         var extensions = new List<string>(SilkMarshal.PtrToStringArray((nint)requiredExtensions, (int)count));
@@ -189,6 +198,17 @@ public class VulkanDevice : RenderingDevice
     }
 #endif
 
+    private unsafe void CreateSurface(Sdl sdlApi, IView view)
+    {
+        VulkanException.ThrowsIf(!_vk.TryGetInstanceExtension<KhrSurface>(_instance, out _khrSurface));
+
+        VkNonDispatchableHandle surfaceHandle = new();
+        var result = sdlApi.VulkanCreateSurface((Silk.NET.SDL.Window*)view.Handle, new VkHandle(_instance.Handle), ref surfaceHandle);
+        VulkanException.ThrowsIf(result == SdlBool.False, $"Couldn't create window surface: {sdlApi.GetErrorS()}.");
+
+        _surfaceKHR = surfaceHandle.ToSurface();
+    }
+
     private unsafe QueueFamilyIndices FindQueueFamilies(PhysicalDevice physicalDevice)
     {
         QueueFamilyIndices queueFamilyIndices = new();
@@ -207,6 +227,14 @@ public class VulkanDevice : RenderingDevice
             if (queueFamilies[i].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
             {
                 queueFamilyIndices.Graphics = i;
+            }
+
+            var result = _khrSurface!.GetPhysicalDeviceSurfaceSupport(physicalDevice, i, _surfaceKHR, out var presentSupported);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get physical device surface support: {result}.");
+
+            if (presentSupported)
+            {
+                queueFamilyIndices.Present = i;
             }
         }
 
@@ -271,45 +299,57 @@ public class VulkanDevice : RenderingDevice
     private unsafe void CreateLogicalDevice()
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
-        var queuePriority = 1f;
+        var deviceQueueCreateInfos = new List<DeviceQueueCreateInfo>();
+        var uniqueQueueFamilies = new[] { queueFamilyIndices.Graphics, queueFamilyIndices.Present }.Distinct().ToArray();
 
-        DeviceQueueCreateInfo deviceQueueCreateInfo = new()
+        var queuePriority = 1f;
+        foreach (var queueFamily in uniqueQueueFamilies)
         {
-            SType = StructureType.DeviceQueueCreateInfo,
-            QueueFamilyIndex = queueFamilyIndices.Graphics!.Value,
-            QueueCount = 1,
-            PQueuePriorities = &queuePriority
-        };
+            DeviceQueueCreateInfo deviceQueueCreateInfo = new()
+            {
+                SType = StructureType.DeviceQueueCreateInfo,
+                QueueFamilyIndex = queueFamily!.Value,
+                QueueCount = 1,
+                PQueuePriorities = &queuePriority
+            };
+            deviceQueueCreateInfos.Add(deviceQueueCreateInfo);
+        }
 
         PhysicalDeviceFeatures physicalDeviceFeatures;
 
-        DeviceCreateInfo deviceCreateInfo = new()
+        fixed (DeviceQueueCreateInfo* deviceQueueCreateInfosPtr = deviceQueueCreateInfos.ToArray())
         {
-            SType = StructureType.DeviceCreateInfo,
-            PQueueCreateInfos = &deviceQueueCreateInfo,
-            QueueCreateInfoCount = 1,
-            PEnabledFeatures = &physicalDeviceFeatures,
-            EnabledExtensionCount = 0,
-            EnabledLayerCount = 0
-        };
+            DeviceCreateInfo deviceCreateInfo = new()
+            {
+                SType = StructureType.DeviceCreateInfo,
+                PQueueCreateInfos = deviceQueueCreateInfosPtr,
+                QueueCreateInfoCount = (uint)deviceQueueCreateInfos.Count,
+                PEnabledFeatures = &physicalDeviceFeatures,
+                EnabledExtensionCount = 0,
+                EnabledLayerCount = 0
+            };
 
 #if DEBUG
-        deviceCreateInfo.EnabledLayerCount = (uint)_validationLayers.Length;
-        deviceCreateInfo.PpEnabledLayerNames = (byte**)SilkMarshal.StringArrayToPtr(_validationLayers);
+            deviceCreateInfo.EnabledLayerCount = (uint)_validationLayers.Length;
+            deviceCreateInfo.PpEnabledLayerNames = (byte**)SilkMarshal.StringArrayToPtr(_validationLayers);
 #endif
 
-        var result = _vk.CreateDevice(_physicalDevice, &deviceCreateInfo, null, out _device);
+            var result = _vk.CreateDevice(_physicalDevice, &deviceCreateInfo, null, out _device);
 
 #if DEBUG
-        SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledLayerNames);
+            SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledLayerNames);
 #endif
 
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create logical device: {result}.");
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create logical device: {result}.");
+        }
 
         _graphicsQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Graphics!.Value, 0);
+        _presentQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Present!.Value, 0);
     }
 
     private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
+
+    private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
 
     private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
 }

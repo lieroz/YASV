@@ -20,17 +20,14 @@ public class SilkNETWindow : NativeControlHost
 
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
-        _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
         var sdlApi = Sdl.GetApi();
+        sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, 1);
 
-        if (sdlApi.VulkanLoadLibrary((byte*)null) == -1)
-        {
-            throw new SymbolLoadingException(sdlApi.GetErrorS());
-        }
+        _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
         _renderingDevice = new VulkanDevice();
-        _renderingDevice.Create(sdlApi);
+        _renderingDevice.Create(sdlApi, _window);
 
         _window.Update += (delta) => { };
         _window.Render += (delta) => { };
@@ -52,6 +49,6 @@ public class SilkNETWindow : NativeControlHost
     protected override unsafe void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
-        _sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)_window!.Handle.ToPointer(), (int)e.NewSize.Width, (int)e.NewSize.Height));
+        _sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)_window!.Handle, (int)e.NewSize.Width, (int)e.NewSize.Height));
     }
 }
