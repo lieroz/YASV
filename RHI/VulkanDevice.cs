@@ -67,6 +67,7 @@ public class VulkanDevice : RenderingDevice
     private Image[]? _swapchainImages;
     private Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
+    private ImageView[]? _swapchainImageViews;
 
     public override unsafe void Create(Sdl sdlApi, IView view)
     {
@@ -78,10 +79,12 @@ public class VulkanDevice : RenderingDevice
         PickPhysicalDevice();
         CreateLogicalDevice();
         CreateSwapchain(view);
+        CreateImageViews();
     }
 
     public override unsafe void Destroy()
     {
+        DestroyImageViews();
         DestroySwapchain();
         DestroyDevice();
 #if DEBUG
@@ -542,6 +545,39 @@ public class VulkanDevice : RenderingDevice
         _swapchainExtent = extent;
     }
 
+    private unsafe void CreateImageViews()
+    {
+        _swapchainImageViews = new ImageView[_swapchainImages!.Length];
+        for (uint i = 0; i < _swapchainImages.Length; i++)
+        {
+            ImageViewCreateInfo imageViewCreateInfo = new()
+            {
+                SType = StructureType.ImageViewCreateInfo,
+                Image = _swapchainImages[i],
+                ViewType = ImageViewType.Type2D,
+                Format = _swapchainImageFormat,
+                Components = new()
+                {
+                    R = ComponentSwizzle.R,
+                    G = ComponentSwizzle.G,
+                    B = ComponentSwizzle.B,
+                    A = ComponentSwizzle.A
+                },
+                SubresourceRange = new()
+                {
+                    AspectMask = ImageAspectFlags.ColorBit,
+                    BaseMipLevel = 0,
+                    LevelCount = 1,
+                    BaseArrayLayer = 0,
+                    LayerCount = 1
+                }
+            };
+
+            var result = _vk.CreateImageView(_device, &imageViewCreateInfo, null, out _swapchainImageViews[i]);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create image view: {result}.");
+        }
+    }
+
     private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
 
     private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
@@ -549,4 +585,12 @@ public class VulkanDevice : RenderingDevice
     private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
 
     private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
+
+    private unsafe void DestroyImageViews()
+    {
+        foreach (var imageView in _swapchainImageViews!)
+        {
+            _vk.DestroyImageView(_device, imageView, null);
+        }
+    }
 }
