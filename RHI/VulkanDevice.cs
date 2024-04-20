@@ -53,6 +53,20 @@ public class VulkanDevice : RenderingDevice
     private Device _device;
     private Queue _graphicsQueue;
     private Queue _presentQueue;
+    private static readonly string[] _deviceExtensions = [
+        KhrSwapchain.ExtensionName
+    ];
+    struct SwapchainSupportDetails
+    {
+        public SurfaceCapabilitiesKHR? Capabilities { get; set; }
+        public SurfaceFormatKHR[]? Formats { get; set; }
+        public PresentModeKHR[]? PresentModes { get; set; }
+    }
+    private KhrSwapchain? _khrSwapchain;
+    private SwapchainKHR _swapchain;
+    private Image[]? _swapchainImages;
+    private Format _swapchainImageFormat;
+    private Extent2D _swapchainExtent;
 
     public override unsafe void Create(Sdl sdlApi, IView view)
     {
@@ -63,10 +77,12 @@ public class VulkanDevice : RenderingDevice
         CreateSurface(sdlApi, view);
         PickPhysicalDevice();
         CreateLogicalDevice();
+        CreateSwapchain(view);
     }
 
     public override unsafe void Destroy()
     {
+        DestroySwapchain();
         DestroyDevice();
 #if DEBUG
         _extDebugUtils?.DestroyDebugUtilsMessenger(_instance, _debugMessenger, null);
@@ -102,8 +118,7 @@ public class VulkanDevice : RenderingDevice
             SType = StructureType.InstanceCreateInfo,
             PApplicationInfo = &applicationInfo,
             EnabledExtensionCount = (uint)extensions.Length,
-            PpEnabledExtensionNames = (byte**)SilkMarshal.StringArrayToPtr(extensions),
-            EnabledLayerCount = 0
+            PpEnabledExtensionNames = (byte**)SilkMarshal.StringArrayToPtr(extensions)
         };
 
 #if DEBUG
@@ -200,7 +215,7 @@ public class VulkanDevice : RenderingDevice
 
     private unsafe void CreateSurface(Sdl sdlApi, IView view)
     {
-        VulkanException.ThrowsIf(!_vk.TryGetInstanceExtension<KhrSurface>(_instance, out _khrSurface));
+        VulkanException.ThrowsIf(!_vk.TryGetInstanceExtension(_instance, out _khrSurface), "Couldn't get 'VK_KHR_sufrace' extension.");
 
         VkNonDispatchableHandle surfaceHandle = new();
         var result = sdlApi.VulkanCreateSurface((Silk.NET.SDL.Window*)view.Handle, new VkHandle(_instance.Handle), ref surfaceHandle);
@@ -241,6 +256,23 @@ public class VulkanDevice : RenderingDevice
         return queueFamilyIndices;
     }
 
+    private unsafe bool CheckDeviceExtensionsSupport(PhysicalDevice physicalDevice)
+    {
+        uint extensionsCount = 0;
+        var result = _vk.EnumerateDeviceExtensionProperties(physicalDevice, (byte*)null, &extensionsCount, null);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't enumerate device extensions properties: {result}");
+
+        var availableExtensions = new ExtensionProperties[extensionsCount];
+        fixed (ExtensionProperties* availableExtensionsPtr = availableExtensions)
+        {
+            result = _vk.EnumerateDeviceExtensionProperties(physicalDevice, (byte*)null, &extensionsCount, availableExtensionsPtr);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't enumerate device extensions properties: {result}");
+        }
+
+        var availableExtensionsNames = availableExtensions.Select(ext => SilkMarshal.PtrToString((nint)ext.ExtensionName)).ToHashSet();
+        return _deviceExtensions.All(availableExtensionsNames.Contains);
+    }
+
     private unsafe bool IsDeviceSuitable(PhysicalDevice physicalDevice, ref ulong memorySize)
     {
         var memoryProperties = _vk.GetPhysicalDeviceMemoryProperties(physicalDevice);
@@ -253,7 +285,16 @@ public class VulkanDevice : RenderingDevice
         }
 
         var queueFamiliyIndices = FindQueueFamilies(physicalDevice);
-        return queueFamiliyIndices.IsComplete();
+        var extensionsSupported = CheckDeviceExtensionsSupport(physicalDevice);
+
+        bool swapchainIsAdequate = false;
+        if (extensionsSupported)
+        {
+            var swapchainSupport = QuerySwapChainSupport(physicalDevice);
+            swapchainIsAdequate = swapchainSupport.Formats != null && swapchainSupport.PresentModes != null;
+        }
+
+        return queueFamiliyIndices.IsComplete() && swapchainIsAdequate;
     }
 
     private unsafe void PickPhysicalDevice()
@@ -315,7 +356,7 @@ public class VulkanDevice : RenderingDevice
             deviceQueueCreateInfos.Add(deviceQueueCreateInfo);
         }
 
-        PhysicalDeviceFeatures physicalDeviceFeatures;
+        PhysicalDeviceFeatures physicalDeviceFeatures = new();
 
         fixed (DeviceQueueCreateInfo* deviceQueueCreateInfosPtr = deviceQueueCreateInfos.ToArray())
         {
@@ -325,8 +366,8 @@ public class VulkanDevice : RenderingDevice
                 PQueueCreateInfos = deviceQueueCreateInfosPtr,
                 QueueCreateInfoCount = (uint)deviceQueueCreateInfos.Count,
                 PEnabledFeatures = &physicalDeviceFeatures,
-                EnabledExtensionCount = 0,
-                EnabledLayerCount = 0
+                EnabledExtensionCount = (uint)_deviceExtensions.Length,
+                PpEnabledExtensionNames = (byte**)SilkMarshal.StringArrayToPtr(_deviceExtensions)
             };
 
 #if DEBUG
@@ -336,6 +377,7 @@ public class VulkanDevice : RenderingDevice
 
             var result = _vk.CreateDevice(_physicalDevice, &deviceCreateInfo, null, out _device);
 
+            SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledExtensionNames);
 #if DEBUG
             SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledLayerNames);
 #endif
@@ -347,9 +389,164 @@ public class VulkanDevice : RenderingDevice
         _presentQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Present!.Value, 0);
     }
 
+    private unsafe SwapchainSupportDetails QuerySwapChainSupport(PhysicalDevice physicalDevice)
+    {
+        var swapchainSupportDetails = new SwapchainSupportDetails();
+
+        var result = _khrSurface!.GetPhysicalDeviceSurfaceCapabilities(physicalDevice, _surfaceKHR, out var surfaceCapabilities);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get phydical device surface capabilities: {result}.");
+        swapchainSupportDetails.Capabilities = surfaceCapabilities;
+
+        uint formatCount = 0;
+        result = _khrSurface.GetPhysicalDeviceSurfaceFormats(physicalDevice, _surfaceKHR, &formatCount, null);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get phydical device surface formats count: {result}.");
+
+        if (formatCount != 0)
+        {
+            swapchainSupportDetails.Formats = new SurfaceFormatKHR[formatCount];
+            fixed (SurfaceFormatKHR* formatsPtr = swapchainSupportDetails.Formats)
+            {
+                result = _khrSurface.GetPhysicalDeviceSurfaceFormats(physicalDevice, _surfaceKHR, &formatCount, formatsPtr);
+                VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get phydical device surface formats: {result}.");
+            }
+        }
+
+        uint presentModesCount = 0;
+        result = _khrSurface.GetPhysicalDeviceSurfacePresentModes(physicalDevice, _surfaceKHR, &presentModesCount, null);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get phydical device surface present modes count: {result}.");
+
+        if (presentModesCount != 0)
+        {
+            swapchainSupportDetails.PresentModes = new PresentModeKHR[presentModesCount];
+            fixed (PresentModeKHR* presentModesPtr = swapchainSupportDetails.PresentModes)
+            {
+                result = _khrSurface.GetPhysicalDeviceSurfacePresentModes(physicalDevice, _surfaceKHR, &presentModesCount, presentModesPtr);
+                VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get phydical device surface present modes: {result}.");
+            }
+        }
+
+        return swapchainSupportDetails;
+    }
+
+    private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats)
+    {
+        foreach (var availableFormat in availableFormats)
+        {
+            if (availableFormat.Format == Format.B8G8R8A8Srgb && availableFormat.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+            {
+                return availableFormat;
+            }
+        }
+        return availableFormats[0];
+    }
+
+    private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes)
+    {
+        foreach (var availablePresentMode in availablePresentModes)
+        {
+            if (availablePresentMode == PresentModeKHR.MailboxKhr)
+            {
+                return availablePresentMode;
+            }
+        }
+        return PresentModeKHR.FifoKhr;
+    }
+
+    private static unsafe Extent2D ChooseSwapExtent(IView view, SurfaceCapabilitiesKHR capabilities)
+    {
+        if (capabilities.CurrentExtent.Width != uint.MaxValue)
+        {
+            return capabilities.CurrentExtent;
+        }
+        else
+        {
+            var frameBufferSize = view.FramebufferSize;
+
+            Extent2D actualExtent = new()
+            {
+                Width = (uint)frameBufferSize.X,
+                Height = (uint)frameBufferSize.Y
+            };
+
+            actualExtent.Width = Math.Clamp(actualExtent.Width, capabilities.MinImageExtent.Width, capabilities.MaxImageExtent.Width);
+            actualExtent.Height = Math.Clamp(actualExtent.Height, capabilities.MinImageExtent.Height, capabilities.MaxImageExtent.Height);
+
+            return actualExtent;
+        }
+    }
+
+    private unsafe void CreateSwapchain(IView view)
+    {
+        var swapchainSupport = QuerySwapChainSupport(_physicalDevice);
+
+        var surfaceFormat = ChooseSwapSurfaceFormat(swapchainSupport.Formats!);
+        var presentMode = ChooseSwapPresentMode(swapchainSupport.PresentModes!);
+        var extent = ChooseSwapExtent(view, swapchainSupport.Capabilities!.Value);
+
+        uint minImageCount = swapchainSupport.Capabilities!.Value.MinImageCount;
+        uint maxImageCount = swapchainSupport.Capabilities!.Value.MaxImageCount;
+
+        uint imageCount = minImageCount + 1;
+        if (minImageCount > 0 && imageCount > maxImageCount)
+        {
+            imageCount = maxImageCount;
+        }
+
+        SwapchainCreateInfoKHR swapchainCreateInfoKHR = new()
+        {
+            SType = StructureType.SwapchainCreateInfoKhr,
+            Surface = _surfaceKHR,
+            MinImageCount = imageCount,
+            ImageFormat = surfaceFormat.Format,
+            ImageColorSpace = surfaceFormat.ColorSpace,
+            ImageExtent = extent,
+            ImageArrayLayers = 1,
+            ImageUsage = ImageUsageFlags.ColorAttachmentBit,
+            PreTransform = swapchainSupport.Capabilities!.Value.CurrentTransform,
+            CompositeAlpha = CompositeAlphaFlagsKHR.OpaqueBitKhr,
+            PresentMode = presentMode,
+            Clipped = true,
+            OldSwapchain = default
+        };
+
+        var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
+        var indices = stackalloc[] { queueFamilyIndices.Graphics!.Value, queueFamilyIndices.Present!.Value };
+
+        if (queueFamilyIndices.Graphics != queueFamilyIndices.Present)
+        {
+            swapchainCreateInfoKHR.ImageSharingMode = SharingMode.Concurrent;
+            swapchainCreateInfoKHR.QueueFamilyIndexCount = 2;
+            swapchainCreateInfoKHR.PQueueFamilyIndices = indices;
+        }
+        else
+        {
+            swapchainCreateInfoKHR.ImageSharingMode = SharingMode.Exclusive;
+        }
+
+        VulkanException.ThrowsIf(!_vk.TryGetDeviceExtension(_instance, _device, out _khrSwapchain), "Couldn't get 'VK_KHR_swapchain' extension.");
+
+        var result = _khrSwapchain!.CreateSwapchain(_device, swapchainCreateInfoKHR, null, out _swapchain);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create swapchain: {result}.");
+
+        result = _khrSwapchain.GetSwapchainImages(_device, _swapchain, &imageCount, null);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get swapchain images count: {result}.");
+
+        _swapchainImages = new Image[imageCount];
+        fixed (Image* swapchainImagesPtr = _swapchainImages)
+        {
+            result = _khrSwapchain.GetSwapchainImages(_device, _swapchain, &imageCount, swapchainImagesPtr);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get swapchain images: {result}.");
+        }
+
+        _swapchainImageFormat = surfaceFormat.Format;
+        _swapchainExtent = extent;
+    }
+
     private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
 
     private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
 
     private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
+
+    private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
 }

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using Avalonia.Controls;
 using Avalonia.Platform;
-using Silk.NET.Core.Loader;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
 using Silk.NET.Windowing.Sdl;
