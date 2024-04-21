@@ -95,7 +95,7 @@ public class VulkanDevice : RenderingDevice
         DestroyInstance();
     }
 
-    #region VkInstance
+    #region Instance
 
     private static unsafe string[] GetRequiredExtensions(Sdl sdlApi, IView view)
     {
@@ -171,7 +171,7 @@ public class VulkanDevice : RenderingDevice
 
     #endregion
 
-    #region ValidationLayers
+    #region Validation Layers
 
 #if DEBUG
     private unsafe bool CheckValidationLayersSupport()
@@ -224,7 +224,7 @@ public class VulkanDevice : RenderingDevice
 #endif
     #endregion
 
-    #region VkSurface
+    #region Surface
 
     private unsafe void CreateSurface(Sdl sdlApi, IView view)
     {
@@ -241,7 +241,7 @@ public class VulkanDevice : RenderingDevice
 
     #endregion
 
-    #region VkPhysicalDevice
+    #region Physical Device
 
     private unsafe QueueFamilyIndices FindQueueFamilies(PhysicalDevice physicalDevice)
     {
@@ -358,7 +358,7 @@ public class VulkanDevice : RenderingDevice
 
     #endregion
 
-    #region VkDevice
+    #region Logical Device
 
     private unsafe void CreateLogicalDevice()
     {
@@ -416,7 +416,7 @@ public class VulkanDevice : RenderingDevice
 
     #endregion
 
-    #region VkSwapchain
+    #region Swapchain
     private unsafe SwapchainSupportDetails QuerySwapChainSupport(PhysicalDevice physicalDevice)
     {
         var swapchainSupportDetails = new SwapchainSupportDetails();
@@ -574,7 +574,7 @@ public class VulkanDevice : RenderingDevice
 
     #endregion
 
-    #region VkImageView
+    #region Render Image Views
     private unsafe void CreateImageViews()
     {
         _swapchainImageViews = new ImageView[_swapchainImages!.Length];
@@ -618,7 +618,11 @@ public class VulkanDevice : RenderingDevice
 
     #endregion
 
+    #region Graphics Pipeline State
+
     private unsafe void CreateGraphicsPipeline()
     {
     }
+
+    #endregion
 }
