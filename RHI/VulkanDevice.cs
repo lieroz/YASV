@@ -80,6 +80,7 @@ public class VulkanDevice : RenderingDevice
         CreateLogicalDevice();
         CreateSwapchain(view);
         CreateImageViews();
+        CreateGraphicsPipeline();
     }
 
     public override unsafe void Destroy()
@@ -92,6 +93,28 @@ public class VulkanDevice : RenderingDevice
 #endif
         DestroySurface();
         DestroyInstance();
+    }
+
+    #region VkInstance
+
+    private static unsafe string[] GetRequiredExtensions(Sdl sdlApi, IView view)
+    {
+        uint count = 0;
+
+        var sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, (byte**)null);
+        VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't determine required extensions count: {sdlApi.GetErrorS()}.");
+
+        var requiredExtensions = (byte**)Marshal.AllocHGlobal((nint)(sizeof(byte*) * count));
+        using var defer = Disposable.Create(() => Marshal.FreeHGlobal((nint)requiredExtensions));
+
+        sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, requiredExtensions);
+        VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't get required extensions: {sdlApi.GetErrorS()}.");
+
+        var extensions = new List<string>(SilkMarshal.PtrToStringArray((nint)requiredExtensions, (int)count));
+#if DEBUG
+        extensions.Add("VK_EXT_debug_utils");
+#endif
+        return [.. extensions];
     }
 
     private unsafe void CreateInstance(Sdl sdlApi, IView view)
@@ -144,6 +167,12 @@ public class VulkanDevice : RenderingDevice
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create Vulkan instance: {result}.");
     }
 
+    private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
+
+    #endregion
+
+    #region ValidationLayers
+
 #if DEBUG
     private unsafe bool CheckValidationLayersSupport()
     {
@@ -162,29 +191,7 @@ public class VulkanDevice : RenderingDevice
         var availableLayersNames = availableLayersProperties.Select(layer => SilkMarshal.PtrToString((nint)layer.LayerName)).ToHashSet();
         return _validationLayers.All(availableLayersNames.Contains);
     }
-#endif
 
-    private static unsafe string[] GetRequiredExtensions(Sdl sdlApi, IView view)
-    {
-        uint count = 0;
-
-        var sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, (byte**)null);
-        VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't determine required extensions count: {sdlApi.GetErrorS()}.");
-
-        var requiredExtensions = (byte**)Marshal.AllocHGlobal((nint)(sizeof(byte*) * count));
-        using var defer = Disposable.Create(() => Marshal.FreeHGlobal((nint)requiredExtensions));
-
-        sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, requiredExtensions);
-        VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't get required extensions: {sdlApi.GetErrorS()}.");
-
-        var extensions = new List<string>(SilkMarshal.PtrToStringArray((nint)requiredExtensions, (int)count));
-#if DEBUG
-        extensions.Add("VK_EXT_debug_utils");
-#endif
-        return [.. extensions];
-    }
-
-#if DEBUG
     private static unsafe uint DebugCallback(DebugUtilsMessageSeverityFlagsEXT messageSeverity,
                                              DebugUtilsMessageTypeFlagsEXT messageTypes,
                                              DebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -215,6 +222,9 @@ public class VulkanDevice : RenderingDevice
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't set up debug messenger: {result}.");
     }
 #endif
+    #endregion
+
+    #region VkSurface
 
     private unsafe void CreateSurface(Sdl sdlApi, IView view)
     {
@@ -226,6 +236,12 @@ public class VulkanDevice : RenderingDevice
 
         _surfaceKHR = surfaceHandle.ToSurface();
     }
+
+    private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
+
+    #endregion
+
+    #region VkPhysicalDevice
 
     private unsafe QueueFamilyIndices FindQueueFamilies(PhysicalDevice physicalDevice)
     {
@@ -340,6 +356,10 @@ public class VulkanDevice : RenderingDevice
             $"\tMemorySize: {(double)maxMemorySize / 1024 / 1024 / 1024:F3} Gib\n");
     }
 
+    #endregion
+
+    #region VkDevice
+
     private unsafe void CreateLogicalDevice()
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
@@ -392,6 +412,11 @@ public class VulkanDevice : RenderingDevice
         _presentQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Present!.Value, 0);
     }
 
+    private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
+
+    #endregion
+
+    #region VkSwapchain
     private unsafe SwapchainSupportDetails QuerySwapChainSupport(PhysicalDevice physicalDevice)
     {
         var swapchainSupportDetails = new SwapchainSupportDetails();
@@ -545,6 +570,11 @@ public class VulkanDevice : RenderingDevice
         _swapchainExtent = extent;
     }
 
+    private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
+
+    #endregion
+
+    #region VkImageView
     private unsafe void CreateImageViews()
     {
         _swapchainImageViews = new ImageView[_swapchainImages!.Length];
@@ -578,19 +608,17 @@ public class VulkanDevice : RenderingDevice
         }
     }
 
-    private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
-
-    private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
-
-    private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
-
-    private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
-
     private unsafe void DestroyImageViews()
     {
         foreach (var imageView in _swapchainImageViews!)
         {
             _vk.DestroyImageView(_device, imageView, null);
         }
+    }
+
+    #endregion
+
+    private unsafe void CreateGraphicsPipeline()
+    {
     }
 }
