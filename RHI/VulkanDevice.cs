@@ -26,18 +26,15 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
 
 public class VulkanDevice : RenderingDevice
 {
-#if DEBUG
-    private static readonly string[] _validationLayers = [
-        "VK_LAYER_KHRONOS_profiles",
-        "VK_LAYER_KHRONOS_validation",
-    ];
-#endif
-
     private readonly Vk _vk = Vk.GetApi();
     private Instance _instance;
 #if DEBUG
     private ExtDebugUtils? _extDebugUtils;
     private DebugUtilsMessengerEXT _debugMessenger;
+    private static readonly string[] _validationLayers = [
+        "VK_LAYER_KHRONOS_profiles",
+        "VK_LAYER_KHRONOS_validation",
+    ];
 #endif
     private KhrSurface? _khrSurface;
     private SurfaceKHR _surfaceKHR;
