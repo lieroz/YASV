@@ -569,9 +569,6 @@ public class VulkanDevice : RenderingDevice
 
     private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
 
-    #endregion
-
-    #region Render Image Views
     private unsafe void CreateImageViews()
     {
         _swapchainImageViews = new ImageView[_swapchainImages!.Length];
