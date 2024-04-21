@@ -71,6 +71,7 @@ public class VulkanDevice : RenderingDevice
     private RenderPass _renderPass;
     private PipelineLayout _pipelineLayout;
     private Pipeline _graphicsPipeline;
+    private Framebuffer[]? _swapchainFramebuffers;
 
     public override unsafe void Create(Sdl sdlApi, IView view)
     {
@@ -85,19 +86,21 @@ public class VulkanDevice : RenderingDevice
         CreateImageViews();
         CreateRenderPass();
         CreateGraphicsPipeline();
+        CreateFramebuffers();
     }
 
     public override unsafe void Destroy()
     {
+        DestroyFramebuffers();
         DestroyGraphicsPipeline();
         DestroyRenderPass();
         DestroyImageViews();
         DestroySwapchain();
-        DestroyDevice();
-#if DEBUG
-        _extDebugUtils?.DestroyDebugUtilsMessenger(_instance, _debugMessenger, null);
-#endif
+        DestroyLogicalDevice();
         DestroySurface();
+#if DEBUG
+        DestroyDebugMessenger();
+#endif
         DestroyInstance();
     }
 
@@ -227,6 +230,9 @@ public class VulkanDevice : RenderingDevice
         var result = _extDebugUtils!.CreateDebugUtilsMessenger(_instance, GetDebugMessengerCreateInfo(), null, out _debugMessenger);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't set up debug messenger: {result}.");
     }
+
+    private unsafe void DestroyDebugMessenger() => _extDebugUtils?.DestroyDebugUtilsMessenger(_instance, _debugMessenger, null);
+
 #endif
     #endregion
 
@@ -418,7 +424,7 @@ public class VulkanDevice : RenderingDevice
         _presentQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Present!.Value, 0);
     }
 
-    private unsafe void DestroyDevice() => _vk.DestroyDevice(_device, null);
+    private unsafe void DestroyLogicalDevice() => _vk.DestroyDevice(_device, null);
 
     #endregion
 
@@ -852,6 +858,41 @@ public class VulkanDevice : RenderingDevice
     {
         _vk.DestroyPipeline(_device, _graphicsPipeline, null);
         _vk.DestroyPipelineLayout(_device, _pipelineLayout, null);
+    }
+
+    #endregion
+
+    #region Framebuffer
+
+    private unsafe void CreateFramebuffers()
+    {
+        _swapchainFramebuffers = new Framebuffer[_swapchainImageViews!.Length];
+        for (uint i = 0; i < _swapchainImageViews.Length; i++)
+        {
+            var attachments = stackalloc[] { _swapchainImageViews[i] };
+
+            FramebufferCreateInfo framebufferInfo = new()
+            {
+                SType = StructureType.FramebufferCreateInfo,
+                RenderPass = _renderPass,
+                AttachmentCount = 1,
+                PAttachments = attachments,
+                Width = _swapchainExtent.Width,
+                Height = _swapchainExtent.Height,
+                Layers = 1
+            };
+
+            var result = _vk.CreateFramebuffer(_device, &framebufferInfo, null, out _swapchainFramebuffers[i]);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create framebuffer[{i}]: {result}.");
+        }
+    }
+
+    private unsafe void DestroyFramebuffers()
+    {
+        foreach (var framebuffer in _swapchainFramebuffers!)
+        {
+            _vk.DestroyFramebuffer(_device, framebuffer, null);
+        }
     }
 
     #endregion
