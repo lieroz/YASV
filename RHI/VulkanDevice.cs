@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Runtime.InteropServices;
@@ -24,6 +25,8 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
     }
 }
 
+// TODO: Add shader compilation code via dxc
+// TODO: Use HLSL shaders
 public class VulkanDevice : RenderingDevice
 {
     private readonly Vk _vk = Vk.GetApi();
@@ -65,6 +68,7 @@ public class VulkanDevice : RenderingDevice
     private Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
+    private PipelineLayout _pipelineLayout;
 
     public override unsafe void Create(Sdl sdlApi, IView view)
     {
@@ -82,6 +86,7 @@ public class VulkanDevice : RenderingDevice
 
     public override unsafe void Destroy()
     {
+        DestroyPipelineLayout();
         DestroyImageViews();
         DestroySwapchain();
         DestroyDevice();
@@ -614,9 +619,163 @@ public class VulkanDevice : RenderingDevice
 
     #region Graphics Pipeline State
 
+    private unsafe ShaderModule CreateShaderModule(byte[] code)
+    {
+        fixed (byte* codePtr = code)
+        {
+            ShaderModuleCreateInfo shaderModuleCreateInfo = new()
+            {
+                SType = StructureType.ShaderModuleCreateInfo,
+                CodeSize = (uint)code.Length,
+                PCode = (uint*)codePtr,
+            };
+
+            ShaderModule shaderModule = new();
+            var result = _vk.CreateShaderModule(_device, shaderModuleCreateInfo, null, out shaderModule);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
+
+            return shaderModule;
+        }
+    }
+
     private unsafe void CreateGraphicsPipeline()
     {
+        var vertShaderCode = File.ReadAllBytes("Shaders/triangle.vert.spv");
+        var fragShaderCode = File.ReadAllBytes("Shaders/triangle.vert.spv");
+
+        var vertShaderModule = CreateShaderModule(vertShaderCode);
+        var fragShaderModule = CreateShaderModule(fragShaderCode);
+
+        PipelineShaderStageCreateInfo vertShaderStageCreateInfo = new()
+        {
+            SType = StructureType.PipelineShaderStageCreateInfo,
+            Stage = ShaderStageFlags.VertexBit,
+            Module = vertShaderModule,
+            PName = (byte*)SilkMarshal.StringToPtr("main"),
+        };
+
+        PipelineShaderStageCreateInfo fragShaderStageCreateInfo = new()
+        {
+            SType = StructureType.PipelineShaderStageCreateInfo,
+            Stage = ShaderStageFlags.FragmentBit,
+            Module = fragShaderModule,
+            PName = (byte*)SilkMarshal.StringToPtr("main"),
+        };
+
+        var shaderStages = stackalloc[] { vertShaderStageCreateInfo, fragShaderStageCreateInfo };
+
+        PipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = new()
+        {
+            SType = StructureType.PipelineVertexInputStateCreateInfo,
+        };
+
+        PipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = new()
+        {
+            SType = StructureType.PipelineInputAssemblyStateCreateInfo,
+            Topology = PrimitiveTopology.TriangleList,
+            PrimitiveRestartEnable = false
+        };
+
+        Viewport viewport = new()
+        {
+            X = 0f,
+            Y = 0f,
+            Width = _swapchainExtent.Width,
+            Height = _swapchainExtent.Height,
+            MinDepth = 0f,
+            MaxDepth = 1f
+        };
+
+        Rect2D scissor = new()
+        {
+            Offset = new(0, 0),
+            Extent = _swapchainExtent
+        };
+
+        PipelineViewportStateCreateInfo pipelineViewportStateCreateInfo = new()
+        {
+            SType = StructureType.PipelineViewportStateCreateInfo,
+            ViewportCount = 1,
+            PViewports = &viewport,
+            ScissorCount = 1,
+            PScissors = &scissor
+        };
+
+        PipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo = new()
+        {
+            SType = StructureType.PipelineRasterizationStateCreateInfo,
+            DepthClampEnable = false,
+            RasterizerDiscardEnable = false,
+            PolygonMode = PolygonMode.Fill,
+            LineWidth = 1f,
+            CullMode = CullModeFlags.BackBit,
+            FrontFace = FrontFace.Clockwise,
+            DepthBiasEnable = false,
+            DepthBiasConstantFactor = 0f,
+            DepthBiasClamp = 0f,
+            DepthBiasSlopeFactor = 0f
+        };
+
+        PipelineMultisampleStateCreateInfo multisampleStateCreateInfo = new()
+        {
+            SType = StructureType.PipelineMultisampleStateCreateInfo,
+            SampleShadingEnable = false,
+            RasterizationSamples = SampleCountFlags.Count1Bit,
+            MinSampleShading = 1f,
+            PSampleMask = null,
+            AlphaToCoverageEnable = false,
+            AlphaToOneEnable = false
+        };
+
+        PipelineColorBlendAttachmentState pipelineColorBlendAttachmentState = new()
+        {
+            ColorWriteMask = ColorComponentFlags.RBit
+                           | ColorComponentFlags.GBit
+                           | ColorComponentFlags.BBit
+                           | ColorComponentFlags.ABit,
+            BlendEnable = false,
+            SrcColorBlendFactor = Silk.NET.Vulkan.BlendFactor.One,
+            DstColorBlendFactor = Silk.NET.Vulkan.BlendFactor.Zero,
+            ColorBlendOp = BlendOp.Add,
+            SrcAlphaBlendFactor = Silk.NET.Vulkan.BlendFactor.One,
+            DstAlphaBlendFactor = Silk.NET.Vulkan.BlendFactor.Zero,
+            AlphaBlendOp = BlendOp.Add
+        };
+
+        PipelineColorBlendStateCreateInfo pipelineColorBlendStateCreateInfo = new()
+        {
+            SType = StructureType.PipelineColorBlendStateCreateInfo,
+            LogicOpEnable = false,
+            LogicOp = LogicOp.Copy,
+            AttachmentCount = 1,
+            PAttachments = &pipelineColorBlendAttachmentState
+        };
+
+        pipelineColorBlendStateCreateInfo.BlendConstants[0] = 0f;
+        pipelineColorBlendStateCreateInfo.BlendConstants[1] = 0f;
+        pipelineColorBlendStateCreateInfo.BlendConstants[2] = 0f;
+        pipelineColorBlendStateCreateInfo.BlendConstants[3] = 0f;
+
+        PipelineLayoutCreateInfo pipelineLayoutCreateInfo = new()
+        {
+            SType = StructureType.PipelineLayoutCreateInfo,
+            SetLayoutCount = 0,
+            PSetLayouts = null,
+            PushConstantRangeCount = 0,
+            PPushConstantRanges = null
+        };
+
+        var result = _vk.CreatePipelineLayout(_device, pipelineLayoutCreateInfo, null, out _pipelineLayout);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
+
+        SilkMarshal.Free((nint)vertShaderStageCreateInfo.PName);
+        SilkMarshal.Free((nint)fragShaderStageCreateInfo.PName);
+
+        _vk.DestroyShaderModule(_device, vertShaderModule, null);
+        _vk.DestroyShaderModule(_device, fragShaderModule, null);
     }
+
+    private unsafe void DestroyPipelineLayout() => _vk.DestroyPipelineLayout(_device, _pipelineLayout, null);
 
     #endregion
 }
