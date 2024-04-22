@@ -24,19 +24,27 @@ public class SilkNETWindow : NativeControlHost
         sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, 1);
 
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
+        _window.Initialize();
 
         _renderingDevice = new VulkanDevice();
         _renderingDevice.Create(sdlApi, _window);
 
         _window.Update += (delta) => { };
-        _window.Render += (delta) => { };
+        _window.Render += (delta) =>
+        {
+            // _renderingDevice.DrawFrame();
+        };
 
         _sdlThread = new(() =>
         {
-            while (_sdlActions.TryDequeue(out var action))
+            _window.Run(() =>
             {
-                action();
-            }
+                while (_sdlActions.TryDequeue(out var action))
+                {
+                    action();
+                }
+                _renderingDevice.DrawFrame();
+            });
         });
         _sdlThread.Start();
 
