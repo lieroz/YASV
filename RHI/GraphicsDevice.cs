@@ -3,13 +3,15 @@ using Silk.NET.Windowing;
 
 namespace YASV.RHI;
 
-public abstract class RenderingDevice
+public abstract class GraphicsDevice
 {
     public const int MaxFramesInFlight = 2;
 
     public abstract void Create(Sdl sdlApi, IView view);
 
     public abstract void Destroy();
+
+    public abstract void WaitIdle();
 
     public abstract void DrawFrame();
 }

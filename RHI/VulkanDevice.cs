@@ -27,7 +27,7 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
 
 // TODO: Add shader compilation code via dxc
 // TODO: Use HLSL shaders
-public class VulkanDevice : RenderingDevice
+public class VulkanDevice : GraphicsDevice
 {
     private readonly Vk _vk = Vk.GetApi();
     private Instance _instance;
@@ -78,7 +78,6 @@ public class VulkanDevice : RenderingDevice
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
     private uint _currentFrame = 0;
-    private uint _globalFrame = 0;
 
     public override unsafe void Create(Sdl sdlApi, IView view)
     {
@@ -115,6 +114,11 @@ public class VulkanDevice : RenderingDevice
         DestroyDebugMessenger();
 #endif
         DestroyInstance();
+    }
+
+    public override unsafe void WaitIdle()
+    {
+        _vk.DeviceWaitIdle(_device);
     }
 
     public override unsafe void DrawFrame()
@@ -166,7 +170,6 @@ public class VulkanDevice : RenderingDevice
         result = _khrSwapchain.QueuePresent(_graphicsQueue, presentInfo);
 
         _currentFrame = (_currentFrame + 1) % MaxFramesInFlight;
-        _globalFrame++;
     }
 
     #region Instance

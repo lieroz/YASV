@@ -15,7 +15,7 @@
                    VerticalAlignment="Center"
                    HorizontalAlignment="Center"/>
         </SplitView.Pane>
-        <vm:SilkNETWindow/>
+        <vm:SilkNETWindow x:Name="SilkNETWindow" />
     </SplitView>
 
 </Window>

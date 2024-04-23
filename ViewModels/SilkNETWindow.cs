@@ -10,12 +10,38 @@ using SDLThread = System.Threading.Thread;
 
 namespace YASV.ViewModels;
 
-public class SilkNETWindow : NativeControlHost
+public class SilkNETWindow : NativeControlHost, IDisposable
 {
+    private bool _disposed = false;
     private IView? _window;
-    private RenderingDevice? _renderingDevice;
+    private GraphicsDevice? _renderingDevice;
     private SDLThread? _sdlThread;
     private readonly ConcurrentQueue<Action> _sdlActions = new();
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            _sdlActions.Enqueue(_window!.Close);
+
+            if (disposing)
+            {
+                // dispose managed state (managed objects)
+            }
+
+            // free unmanaged resources (unmanaged objects) and override finalizer
+            // set large fields to null
+            _sdlThread!.Join();
+            _window.Dispose();
+            _disposed = true;
+        }
+    }
 
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
@@ -24,34 +50,27 @@ public class SilkNETWindow : NativeControlHost
         sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, 1);
 
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
-        _window.Initialize();
 
         _renderingDevice = new VulkanDevice();
         _renderingDevice.Create(sdlApi, _window);
-
-        _window.Update += (delta) => { };
-        _window.Render += (delta) =>
-        {
-            // _renderingDevice.DrawFrame();
-        };
 
         _sdlThread = new(() =>
         {
             _window.Run(() =>
             {
-                while (_sdlActions.TryDequeue(out var action))
+                while (_sdlActions.TryDequeue(out var action) && !_window.IsClosing)
                 {
                     action();
                 }
                 _renderingDevice.DrawFrame();
             });
+            _renderingDevice.WaitIdle();
+            _renderingDevice.Destroy();
         });
         _sdlThread.Start();
 
         return new PlatformHandle(_window.Handle, nameof(SilkNETWindow));
     }
-
-    protected override void DestroyNativeControlCore(IPlatformHandle control) => _renderingDevice?.Destroy();
 
     protected override unsafe void OnSizeChanged(SizeChangedEventArgs e)
     {
