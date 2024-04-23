@@ -3,11 +3,12 @@ using Silk.NET.Windowing;
 
 namespace YASV.RHI;
 
-public abstract class GraphicsDevice
+public abstract class GraphicsDevice(IView view)
 {
     public const int MaxFramesInFlight = 2;
+    protected readonly IView _view = view;
 
-    public abstract void Create(Sdl sdlApi, IView view);
+    public abstract void Create(Sdl sdlApi);
 
     public abstract void Destroy();
 

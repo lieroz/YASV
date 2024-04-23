@@ -27,7 +27,7 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
 
 // TODO: Add shader compilation code via dxc
 // TODO: Use HLSL shaders
-public class VulkanDevice : GraphicsDevice
+public class VulkanDevice(IView view) : GraphicsDevice(view)
 {
     private readonly Vk _vk = Vk.GetApi();
     private Instance _instance;
@@ -79,16 +79,16 @@ public class VulkanDevice : GraphicsDevice
     private Fence[]? _inFlightFences;
     private uint _currentFrame = 0;
 
-    public override unsafe void Create(Sdl sdlApi, IView view)
+    public override unsafe void Create(Sdl sdlApi)
     {
-        CreateInstance(sdlApi, view);
+        CreateInstance(sdlApi, _view);
 #if DEBUG
         SetupDebugMessenger();
 #endif
-        CreateSurface(sdlApi, view);
+        CreateSurface(sdlApi, _view);
         PickPhysicalDevice();
         CreateLogicalDevice();
-        CreateSwapchain(view);
+        CreateSwapchain(_view);
         CreateImageViews();
         CreateRenderPass();
         CreateGraphicsPipeline();
@@ -103,11 +103,11 @@ public class VulkanDevice : GraphicsDevice
         DestroySyncObjects();
         FreeCommandBuffers();
         DestroyCommandPool();
-        DestroyFramebuffers();
         DestroyGraphicsPipeline();
         DestroyRenderPass();
-        DestroyImageViews();
-        DestroySwapchain();
+
+        CleanupSwapchain();
+
         DestroyLogicalDevice();
         DestroySurface();
 #if DEBUG
@@ -121,14 +121,40 @@ public class VulkanDevice : GraphicsDevice
         _vk.DeviceWaitIdle(_device);
     }
 
+    private unsafe void CleanupSwapchain()
+    {
+        DestroyFramebuffers();
+        DestroyImageViews();
+        DestroySwapchain();
+    }
+
+    // TODO: Recreate render passes
+    private void RecreateSwapchain()
+    {
+        WaitIdle();
+
+        CleanupSwapchain();
+
+        CreateSwapchain(_view);
+        CreateImageViews();
+        CreateFramebuffers();
+    }
+
     public override unsafe void DrawFrame()
     {
         _vk.WaitForFences(_device, 1, _inFlightFences![_currentFrame], true, uint.MaxValue);
-        _vk.ResetFences(_device, 1, _inFlightFences![_currentFrame]);
 
         uint imageIndex = 0;
-        // TODO: Nvidia next image acquire is broken, idk why?!
         var result = _khrSwapchain!.AcquireNextImage(_device, _swapchain, uint.MaxValue, _imageAvailableSemaphores![_currentFrame], default, &imageIndex);
+        if (result == Result.ErrorOutOfDateKhr)
+        {
+            RecreateSwapchain();
+            return;
+        }
+
+        VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
+
+        _vk.ResetFences(_device, 1, _inFlightFences![_currentFrame]);
 
         result = _vk.ResetCommandBuffer(_commandBuffers![_currentFrame], CommandBufferResetFlags.None);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't reset command buffer: {result}.");
@@ -168,6 +194,13 @@ public class VulkanDevice : GraphicsDevice
         };
 
         result = _khrSwapchain.QueuePresent(_graphicsQueue, presentInfo);
+        if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
+        {
+            RecreateSwapchain();
+            return;
+        }
+
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't present image: {result}.");
 
         _currentFrame = (_currentFrame + 1) % MaxFramesInFlight;
     }
@@ -421,8 +454,6 @@ public class VulkanDevice : GraphicsDevice
             {
                 maxMemorySize = memorySize;
                 _physicalDevice = physicalDevices[i];
-                // Integrated AMD is found first on my machine, use it for now
-                break;
             }
         }
 

@@ -51,8 +51,8 @@ public class SilkNETWindow : NativeControlHost, IDisposable
 
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
-        _renderingDevice = new VulkanDevice();
-        _renderingDevice.Create(sdlApi, _window);
+        _renderingDevice = new VulkanDevice(_window);
+        _renderingDevice.Create(sdlApi);
 
         _sdlThread = new(() =>
         {
