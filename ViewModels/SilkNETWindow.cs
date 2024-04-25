@@ -47,7 +47,7 @@ public class SilkNETWindow : NativeControlHost, IDisposable
     {
 
         var sdlApi = Sdl.GetApi();
-        sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, 1);
+        sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, "1");
 
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
@@ -66,7 +66,10 @@ public class SilkNETWindow : NativeControlHost, IDisposable
             });
             _renderingDevice.WaitIdle();
             _renderingDevice.Destroy();
-        });
+        })
+        {
+            Name = "SDLThread"
+        };
         _sdlThread.Start();
 
         return new PlatformHandle(_window.Handle, nameof(SilkNETWindow));

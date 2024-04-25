@@ -25,10 +25,9 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
     }
 }
 
-// TODO: Add shader compilation code via dxc
-// TODO: Use HLSL shaders
 public class VulkanDevice(IView view) : GraphicsDevice(view)
 {
+    private readonly ShaderCompiler _shaderCompiler = new DxcShaderCompiler();
     private readonly Vk _vk = Vk.GetApi();
     private Instance _instance;
 #if DEBUG
@@ -142,7 +141,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     public override unsafe void DrawFrame()
     {
-        _vk.WaitForFences(_device, 1, _inFlightFences![_currentFrame], true, uint.MaxValue);
+        _vk.WaitForFences(_device, 1, ref _inFlightFences![_currentFrame], true, uint.MaxValue);
 
         uint imageIndex = 0;
         var result = _khrSwapchain!.AcquireNextImage(_device, _swapchain, uint.MaxValue, _imageAvailableSemaphores![_currentFrame], default, &imageIndex);
@@ -154,7 +153,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
 
-        _vk.ResetFences(_device, 1, _inFlightFences![_currentFrame]);
+        _vk.ResetFences(_device, 1, ref _inFlightFences![_currentFrame]);
 
         result = _vk.ResetCommandBuffer(_commandBuffers![_currentFrame], CommandBufferResetFlags.None);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't reset command buffer: {result}.");
@@ -178,7 +177,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PSignalSemaphores = signalSemaphores
         };
 
-        result = _vk.QueueSubmit(_graphicsQueue, 1, submitInfo, _inFlightFences[_currentFrame]);
+        result = _vk.QueueSubmit(_graphicsQueue, 1, ref submitInfo, _inFlightFences[_currentFrame]);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
 
         var swapchains = stackalloc[] { _swapchain };
@@ -193,7 +192,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PImageIndices = &imageIndex,
         };
 
-        result = _khrSwapchain.QueuePresent(_graphicsQueue, presentInfo);
+        result = _khrSwapchain.QueuePresent(_graphicsQueue, ref presentInfo);
         if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
         {
             RecreateSwapchain();
@@ -265,7 +264,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         instanceCreateInfo.PNext = &debugMessengerCreateInfo;
 #endif
 
-        var result = _vk.CreateInstance(instanceCreateInfo, null, out _instance);
+        var result = _vk.CreateInstance(ref instanceCreateInfo, null, out _instance);
 
         SilkMarshal.Free((nint)applicationName);
         SilkMarshal.Free((nint)engineName);
@@ -328,7 +327,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         VulkanException.ThrowsIf(!_vk.TryGetInstanceExtension(_instance, out _extDebugUtils), "Couldn't get 'VK_EXT_debug_utils' extension.");
 
-        var result = _extDebugUtils!.CreateDebugUtilsMessenger(_instance, GetDebugMessengerCreateInfo(), null, out _debugMessenger);
+        var debugMessengerInfo = GetDebugMessengerCreateInfo();
+        var result = _extDebugUtils!.CreateDebugUtilsMessenger(_instance, ref debugMessengerInfo, null, out _debugMessenger);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't set up debug messenger: {result}.");
     }
 
@@ -666,7 +666,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         VulkanException.ThrowsIf(!_vk.TryGetDeviceExtension(_instance, _device, out _khrSwapchain), "Couldn't get 'VK_KHR_swapchain' extension.");
 
-        var result = _khrSwapchain!.CreateSwapchain(_device, swapchainCreateInfoKHR, null, out _swapchain);
+        var result = _khrSwapchain!.CreateSwapchain(_device, ref swapchainCreateInfoKHR, null, out _swapchain);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create swapchain: {result}.");
 
         result = _khrSwapchain.GetSwapchainImages(_device, _swapchain, &imageCount, null);
@@ -778,7 +778,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PDependencies = &dependency
         };
 
-        var result = _vk.CreateRenderPass(_device, renderPassInfo, null, out _renderPass);
+        var result = _vk.CreateRenderPass(_device, ref renderPassInfo, null, out _renderPass);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create render pass: {result}.");
     }
 
@@ -799,8 +799,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 PCode = (uint*)codePtr,
             };
 
-            ShaderModule shaderModule = new();
-            var result = _vk.CreateShaderModule(_device, shaderModuleCreateInfo, null, out shaderModule);
+            var result = _vk.CreateShaderModule(_device, ref shaderModuleCreateInfo, null, out var shaderModule);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
 
             return shaderModule;
@@ -809,8 +808,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CreateGraphicsPipeline()
     {
-        var vertShaderCode = File.ReadAllBytes("Shaders/triangle.vert.spv");
-        var fragShaderCode = File.ReadAllBytes("Shaders/triangle.frag.spv");
+        var vertShaderCode = _shaderCompiler.Compile("Shaders/triangle.vert.hlsl", ShaderStage.Vertex, true);
+        var fragShaderCode = _shaderCompiler.Compile("Shaders/triangle.frag.hlsl", ShaderStage.Pixel, true);
 
         var vertShaderModule = CreateShaderModule(vertShaderCode);
         var fragShaderModule = CreateShaderModule(fragShaderCode);
@@ -946,7 +945,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PPushConstantRanges = null
         };
 
-        var result = _vk.CreatePipelineLayout(_device, pipelineLayout, null, out _pipelineLayout);
+        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
 
         GraphicsPipelineCreateInfo pipelineInfo = new()
@@ -1035,7 +1034,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             QueueFamilyIndex = (uint)queueFamilyIndices.Graphics!,
         };
 
-        var result = _vk.CreateCommandPool(_device, commandPoolInfo, null, out _commandPool);
+        var result = _vk.CreateCommandPool(_device, ref commandPoolInfo, null, out _commandPool);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create command pool: {result}.");
     }
 
@@ -1068,10 +1067,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PInheritanceInfo = null
         };
 
-        var result = _vk.BeginCommandBuffer(commandBuffer, beginInfo);
+        var result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't begin command buffer: {result}.");
 
-        var clearColor = new ClearValue(new ClearColorValue(1f, 0f, 0f, 1f));
+        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
         RenderPassBeginInfo renderPassBeginInfo = new()
         {
             SType = StructureType.RenderPassBeginInfo,
@@ -1086,7 +1085,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PClearValues = &clearColor
         };
 
-        _vk.CmdBeginRenderPass(commandBuffer, renderPassBeginInfo, SubpassContents.Inline);
+        _vk.CmdBeginRenderPass(commandBuffer, ref renderPassBeginInfo, SubpassContents.Inline);
 
         _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _graphicsPipeline);
 
@@ -1099,14 +1098,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             MinDepth = 0f,
             MaxDepth = 1f
         };
-        _vk.CmdSetViewport(commandBuffer, 0, 1, viewport);
+        _vk.CmdSetViewport(commandBuffer, 0, 1, ref viewport);
 
         Rect2D scissor = new()
         {
             Offset = new(0, 0),
             Extent = _swapchainExtent
         };
-        _vk.CmdSetScissor(commandBuffer, 0, 1, scissor);
+        _vk.CmdSetScissor(commandBuffer, 0, 1, ref scissor);
 
         _vk.CmdDraw(commandBuffer, 3, 1, 0, 0);
 
@@ -1139,13 +1138,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         for (int i = 0; i < MaxFramesInFlight; i++)
         {
-            var result = _vk.CreateSemaphore(_device, semaphoreInfo, null, out _imageAvailableSemaphores[i]);
+            var result = _vk.CreateSemaphore(_device, ref semaphoreInfo, null, out _imageAvailableSemaphores[i]);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create semaphore: {result}.");
 
-            result = _vk.CreateSemaphore(_device, semaphoreInfo, null, out _renderFinishedSemaphores[i]);
+            result = _vk.CreateSemaphore(_device, ref semaphoreInfo, null, out _renderFinishedSemaphores[i]);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create semaphore: {result}.");
 
-            result = _vk.CreateFence(_device, fenceInfo, null, out _inFlightFences[i]);
+            result = _vk.CreateFence(_device, ref fenceInfo, null, out _inFlightFences[i]);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create fence: {result}.");
         }
     }
