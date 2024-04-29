@@ -6,6 +6,7 @@ using Silk.NET.SDL;
 using Silk.NET.Windowing;
 using Silk.NET.Windowing.Sdl;
 using YASV.RHI;
+using YASV.Scenes;
 using SDLThread = System.Threading.Thread;
 
 namespace YASV.ViewModels;
@@ -17,6 +18,8 @@ public class SilkNETWindow : NativeControlHost, IDisposable
     private GraphicsDevice? _renderingDevice;
     private SDLThread? _sdlThread;
     private readonly ConcurrentQueue<Action> _sdlActions = new();
+
+    public IScene? CurrentScene { get; set; }
 
     public void Dispose()
     {
@@ -45,7 +48,6 @@ public class SilkNETWindow : NativeControlHost, IDisposable
 
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
-
         var sdlApi = Sdl.GetApi();
         sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, "1");
 
@@ -62,7 +64,11 @@ public class SilkNETWindow : NativeControlHost, IDisposable
                 {
                     action();
                 }
-                _renderingDevice.DrawFrame();
+                if (CurrentScene != null)
+                {
+                    CurrentScene.Draw();
+                    _renderingDevice.DrawFrame(); // TODO: move to Draw in each Scene
+                }
             });
             _renderingDevice.WaitIdle();
             _renderingDevice.Destroy();

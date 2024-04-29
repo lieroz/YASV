@@ -10,10 +10,9 @@
     <!--https://docs.avaloniaui.net/docs/reference/controls/splitview-->
     <SplitView IsPaneOpen="True" DisplayMode="Inline" OpenPaneLength="300">
         <SplitView.Pane>
-            <TextBlock Text="PlaceHolder"
-                   FontSize="24"
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Center"/>
+            <StackPanel Margin="20">
+                <ListBox x:Name="scenes"/>
+            </StackPanel>
         </SplitView.Pane>
         <vm:SilkNETWindow x:Name="SilkNETWindow" />
     </SplitView>
