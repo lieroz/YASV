@@ -7,8 +7,9 @@ namespace YASV.RHI;
 
 public class DxcShaderCompiler : ShaderCompiler
 {
-    private const string TargetProfileVersion = "6_0";
-    private readonly DXC _dxc = DXC.GetApi();
+    private const string TargetProfileVersion = "6_5";
+    // TODO: fix hardcoded path to library
+    private readonly DXC _dxc = new DXC(DXC.CreateDefaultContext(["C:\\VulkanSDK\\1.3.280.0\\Bin\\dxcompiler.dll"]));
     private ComPtr<IDxcUtils> _dxcUtils;
     private ComPtr<IDxcCompiler3> _dxcCompiler;
 

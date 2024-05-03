@@ -15,11 +15,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-#if DEBUG
         InitializeComponent();
-#else
-        InitializeComponent(attachDevTools: false);
-#endif
 
         scenes.ItemsSource = _sceneTypes.Select(type => type.Name);
         _renderWindow = this.GetControl<SilkNETWindow>("SilkNETWindow");

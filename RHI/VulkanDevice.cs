@@ -51,7 +51,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Device _device;
     private Queue _graphicsQueue;
     private Queue _presentQueue;
-    private static readonly string[] _deviceExtensions = [
+    private static string[] _deviceExtensions = [
         KhrSwapchain.ExtensionName
     ];
     struct SwapchainSupportDetails
@@ -401,6 +401,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
 
         var availableExtensionsNames = availableExtensions.Select(ext => SilkMarshal.PtrToString((nint)ext.ExtensionName)).ToHashSet();
+        if (availableExtensionsNames.Contains("VK_KHR_portability_subset"))
+        {
+            _deviceExtensions = [.. _deviceExtensions.Append("VK_KHR_portability_subset")];
+        }
         return _deviceExtensions.All(availableExtensionsNames.Contains);
     }
 
@@ -442,9 +446,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get physical devices: {result}.");
         }
 
-        // Picking GPU with most memory
-        // Cause most of the time the more memory GPU has the more performant it is
-        // Ideally all GPU parameters have to be taken into account
         ulong maxMemorySize = 0;
         for (int i = 0; i < physicalDevices.Length; i++)
         {
@@ -453,6 +454,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             {
                 maxMemorySize = memorySize;
                 _physicalDevice = physicalDevices[i];
+            }
+
+            var props = _vk.GetPhysicalDeviceProperties(physicalDevices[i]);
+            if (props.DeviceType == PhysicalDeviceType.DiscreteGpu)
+            {
+                _physicalDevice = physicalDevices[i];
+                break;
             }
         }
 
