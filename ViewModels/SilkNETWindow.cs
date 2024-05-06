@@ -51,6 +51,7 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         var sdlApi = Sdl.GetApi();
         sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, "1");
 
+        // TODO: Add packaging of vulkan-1 library
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
         _renderingDevice = new VulkanDevice(_window);

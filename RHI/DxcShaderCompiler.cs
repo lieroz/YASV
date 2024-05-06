@@ -8,13 +8,22 @@ namespace YASV.RHI;
 public class DxcShaderCompiler : ShaderCompiler
 {
     private const string TargetProfileVersion = "6_5";
-    // TODO: fix hardcoded path to library
-    private readonly DXC _dxc = new DXC(DXC.CreateDefaultContext(["C:\\VulkanSDK\\1.3.280.0\\Bin\\dxcompiler.dll"]));
+    private readonly DXC _dxc;
     private ComPtr<IDxcUtils> _dxcUtils;
     private ComPtr<IDxcCompiler3> _dxcCompiler;
 
     public unsafe DxcShaderCompiler()
     {
+        // TODO: Add packaging of dxcompiler library
+        if (OperatingSystem.IsWindows())
+        {
+            _dxc = new DXC(DXC.CreateDefaultContext([$"{Environment.GetEnvironmentVariable("VULKAN_SDK")}/Bin/dxcompiler.dll"]));
+        }
+        else
+        {
+            throw new PlatformNotSupportedException($"Unsupporeted platform: {Environment.OSVersion.Platform}");
+        }
+
         // TODO: Silk.NET should add CLSID_ guids
         {
             Guid rclsid = new Guid("6245D6AF-66E0-48FD-80B4-4D271796748C");
