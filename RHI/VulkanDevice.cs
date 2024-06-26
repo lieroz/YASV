@@ -66,12 +66,12 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
-    private RenderPass _renderPass;
+    private Silk.NET.Vulkan.RenderPass _renderPass;
     private PipelineLayout _pipelineLayout;
     private Pipeline _graphicsPipeline;
     private Framebuffer[]? _swapchainFramebuffers;
     private CommandPool _commandPool;
-    private CommandBuffer[]? _commandBuffers;
+    private Silk.NET.Vulkan.CommandBuffer[]? _commandBuffers;
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
@@ -401,10 +401,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
 
         var availableExtensionsNames = availableExtensions.Select(ext => SilkMarshal.PtrToString((nint)ext.ExtensionName)).ToHashSet();
-        if (availableExtensionsNames.Contains("VK_KHR_portability_subset"))
-        {
-            _deviceExtensions = [.. _deviceExtensions.Append("VK_KHR_portability_subset")];
-        }
+        // if (availableExtensionsNames.Contains("VK_KHR_portability_subset"))
+        // {
+        //     _deviceExtensions = [.. _deviceExtensions.Append("VK_KHR_portability_subset")];
+        // }
         return _deviceExtensions.All(availableExtensionsNames.Contains);
     }
 
@@ -815,8 +815,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CreateGraphicsPipeline()
     {
-        var vertShaderCode = _shaderCompiler.Compile("Shaders/triangle.vert.hlsl", ShaderStage.Vertex, true);
-        var fragShaderCode = _shaderCompiler.Compile("Shaders/triangle.frag.hlsl", ShaderStage.Pixel, true);
+        var vertShaderCode = _shaderCompiler.Compile("Shaders/triangle.vert.hlsl", Shader.Stage.Vertex, true);
+        var fragShaderCode = _shaderCompiler.Compile("Shaders/triangle.frag.hlsl", Shader.Stage.Fragment, true);
 
         var vertShaderModule = CreateShaderModule(vertShaderCode);
         var fragShaderModule = CreateShaderModule(fragShaderCode);
@@ -1049,7 +1049,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CreateCommandBuffers()
     {
-        _commandBuffers = new CommandBuffer[MaxFramesInFlight];
+        _commandBuffers = new Silk.NET.Vulkan.CommandBuffer[MaxFramesInFlight];
 
         CommandBufferAllocateInfo allocateInfo = new()
         {
@@ -1065,7 +1065,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void FreeCommandBuffers() => _vk.FreeCommandBuffers(_device, _commandPool, _commandBuffers);
 
-    private unsafe void RecordCommandBuffer(CommandBuffer commandBuffer, uint imageIndex)
+    private unsafe void RecordCommandBuffer(Silk.NET.Vulkan.CommandBuffer commandBuffer, uint imageIndex)
     {
         CommandBufferBeginInfo beginInfo = new()
         {
@@ -1167,4 +1167,202 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     }
 
     #endregion
+
+    protected override unsafe ICommandBuffer[] AllocateCommandBuffers(int count)
+    {
+        var commandBuffers = new CommandBuffer[count];
+        var allocateInfo = new CommandBufferAllocateInfo()
+        {
+            SType = StructureType.CommandBufferAllocateInfo,
+            CommandPool = _commandPool,
+            Level = CommandBufferLevel.Primary,
+            CommandBufferCount = (uint)count
+        };
+
+        var result = _vk.AllocateCommandBuffers(_device, &allocateInfo, commandBuffers);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkAllocateCommandBuffers failed: {result}.");
+
+        return commandBuffers.Select(x => new VulkanCommandBufferWrapper(x)).ToArray();
+    }
+
+    protected override void ResetCommandBuffer(ICommandBuffer commandBuffer)
+    {
+        var vulkanCommandBuffer = commandBuffer.ToVulkanCommandBuffer();
+        var result = _vk.ResetCommandBuffer(vulkanCommandBuffer, CommandBufferResetFlags.None);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkResetCommandBuffer failed: {result}.");
+    }
+
+    public override void BeginCommandBuffer(ICommandBuffer commandBuffer)
+    {
+        CommandBufferBeginInfo beginInfo = new()
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.None,
+            PInheritanceInfo = null
+        };
+        var result = _vk.BeginCommandBuffer(commandBuffer.ToVulkanCommandBuffer(), ref beginInfo);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
+    }
+
+    public override void EndCommandBuffer(ICommandBuffer commandBuffer)
+    {
+        var result = _vk.EndCommandBuffer(commandBuffer.ToVulkanCommandBuffer());
+        VulkanException.ThrowsIf(result != Result.Success, $"vkEndCommandBuffer failed: {result}.");
+    }
+
+    public override void SetViewport(ICommandBuffer commandBuffer, int x, int y, int width, int height, float minDepth, float maxDepth)
+    {
+        var viewport = new Viewport()
+        {
+            X = x,
+            Y = y,
+            Width = width,
+            Height = height,
+            MinDepth = minDepth,
+            MaxDepth = maxDepth
+        };
+        // TODO: Allow setting multiple viewports in one command
+        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref viewport);
+    }
+
+    public override void SetScissor(ICommandBuffer commandBuffer, int x, int y, int width, int height)
+    {
+        var scissor = new Rect2D()
+        {
+            Offset = new(x, y),
+            Extent = new Extent2D((uint)width, (uint)height)
+        };
+        // TODO: Allow setting multiple scissors in one command
+        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);
+    }
+
+    public override void Draw(ICommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
+    {
+        _vk.CmdDraw(commandBuffer.ToVulkanCommandBuffer(), vertexCount, instanceCount, firstVertex, firstInstance);
+    }
+
+    public override void DrawIndexed(ICommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance)
+    {
+        _vk.CmdDrawIndexed(commandBuffer.ToVulkanCommandBuffer(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+    }
+
+    public override void BeginRenderPass(ICommandBuffer commandBuffer)
+    {
+        var renderPassBeginInfo = new RenderPassBeginInfo();
+        _vk.CmdBeginRenderPass(commandBuffer.ToVulkanCommandBuffer(), ref renderPassBeginInfo, SubpassContents.Inline);
+    }
+
+    public override void EndRenderPass(ICommandBuffer commandBuffer)
+    {
+        _vk.CmdEndRenderPass(commandBuffer.ToVulkanCommandBuffer());
+    }
+
+    public override unsafe GraphicsPipeline CreateGraphicsPipeline(GraphicsPipelineLayout layout)
+    {
+        var shaderStages = new List<PipelineShaderStageCreateInfo>();
+        foreach (var shader in layout._shaders)
+        {
+            if (shader != null)
+            {
+                var vulkanShader = shader.ToVulkanShader();
+                shaderStages.Add(new PipelineShaderStageCreateInfo()
+                {
+                    SType = StructureType.PipelineShaderStageCreateInfo,
+                    Stage = shader._stage.ToVulkanShaderStage(),
+                    Module = vulkanShader,
+                    PName = (byte*)SilkMarshal.StringToPtr("main"),
+                });
+            }
+        }
+
+        var vertexInputState = layout._vertexInputState.ToVulkanVertexInputState();
+        var inputAssemblyState = layout._inputAssemblyState.ToVulkanInputAssemblyState();
+        var rasterizationState = layout._rasterizationState.ToVulkanRasterizationState();
+        var multisampleState = layout._multisampleState.ToVulkanMultisampleState();
+
+        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[layout._colorBlendAttachmentStates.Length];
+        for (int i = 0; i < layout._colorBlendAttachmentStates.Length; i++)
+        {
+            vulkanColorBlendAttachmentStates[i] = layout._colorBlendAttachmentStates[i].ToVulkanColorBlendAttachmentState();
+        }
+        var colorBlendState = layout._colorBlendState.ToVulkanColorBlendState(vulkanColorBlendAttachmentStates);
+
+        var dynamicStates = stackalloc[]
+        {
+            DynamicState.Viewport,
+            DynamicState.Scissor
+        };
+        PipelineDynamicStateCreateInfo dynamicState = new()
+        {
+            SType = StructureType.PipelineDynamicStateCreateInfo,
+            DynamicStateCount = 2,
+            PDynamicStates = dynamicStates
+        };
+
+        // TODO: wtf is this?
+        PipelineLayoutCreateInfo pipelineLayout = new()
+        {
+            SType = StructureType.PipelineLayoutCreateInfo,
+            SetLayoutCount = 0,
+            PSetLayouts = null,
+            PushConstantRangeCount = 0,
+            PPushConstantRanges = null
+        };
+
+        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
+
+        GraphicsPipelineCreateInfo pipelineInfo;
+        fixed (PipelineShaderStageCreateInfo* shaderStagesPtr = shaderStages.ToArray())
+        {
+            pipelineInfo = new()
+            {
+                SType = StructureType.GraphicsPipelineCreateInfo,
+                StageCount = (uint)shaderStages.Count,
+                PStages = shaderStagesPtr,
+                PVertexInputState = &vertexInputState,
+                PInputAssemblyState = &inputAssemblyState,
+                PViewportState = null,
+                PRasterizationState = &rasterizationState,
+                PMultisampleState = &multisampleState,
+                PDepthStencilState = null, // TODO: add depth and stencil abstractions
+                PColorBlendState = &colorBlendState,
+                PDynamicState = &dynamicState,
+                Layout = _pipelineLayout, // TODO: wtf is this?
+                RenderPass = _renderPass, // TODO: do I need an abstraction over this?
+                Subpass = 0,
+                BasePipelineHandle = default,
+                BasePipelineIndex = -1
+            };
+        }
+
+        result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pso);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
+
+        return new VulkanGraphicsPipelineWrapper(pso);
+    }
+
+    public override void BindGraphicsPipeline(ICommandBuffer commandBuffer, GraphicsPipeline graphicsPipeline)
+    {
+        _vk.CmdBindPipeline(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, graphicsPipeline.ToVulkanGraphicsPipeline());
+    }
+
+    public override unsafe Shader CreateShader(string path, Shader.Stage stage)
+    {
+        var code = _shaderCompiler.Compile(path, stage, true);
+        fixed (byte* pCode = code)
+        {
+            ShaderModuleCreateInfo shaderModuleCreateInfo = new()
+            {
+                SType = StructureType.ShaderModuleCreateInfo,
+                CodeSize = (uint)code.Length,
+                PCode = (uint*)pCode,
+            };
+
+            var result = _vk.CreateShaderModule(_device, ref shaderModuleCreateInfo, null, out var shaderModule);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
+
+            return new VulkanShaderWrapper(shaderModule, stage);
+        }
+    }
 }
