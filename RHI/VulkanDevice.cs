@@ -71,7 +71,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Pipeline _graphicsPipeline;
     private Framebuffer[]? _swapchainFramebuffers;
     private CommandPool _commandPool;
-    private Silk.NET.Vulkan.CommandBuffer[]? _commandBuffers;
+    private CommandBuffer[]? _commandBuffers;
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
@@ -851,29 +851,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PrimitiveRestartEnable = false
         };
 
-        Viewport viewport = new()
-        {
-            X = 0f,
-            Y = 0f,
-            Width = _swapchainExtent.Width,
-            Height = _swapchainExtent.Height,
-            MinDepth = 0f,
-            MaxDepth = 1f
-        };
-
-        Rect2D scissor = new()
-        {
-            Offset = new(0, 0),
-            Extent = _swapchainExtent
-        };
-
         PipelineViewportStateCreateInfo viewportState = new()
         {
             SType = StructureType.PipelineViewportStateCreateInfo,
             ViewportCount = 1,
-            PViewports = &viewport,
+            PViewports = null,
             ScissorCount = 1,
-            PScissors = &scissor
+            PScissors = null
         };
 
         PipelineRasterizationStateCreateInfo rasterizationState = new()
@@ -1049,7 +1033,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CreateCommandBuffers()
     {
-        _commandBuffers = new Silk.NET.Vulkan.CommandBuffer[MaxFramesInFlight];
+        _commandBuffers = new CommandBuffer[MaxFramesInFlight];
 
         CommandBufferAllocateInfo allocateInfo = new()
         {
@@ -1065,7 +1049,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void FreeCommandBuffers() => _vk.FreeCommandBuffers(_device, _commandPool, _commandBuffers);
 
-    private unsafe void RecordCommandBuffer(Silk.NET.Vulkan.CommandBuffer commandBuffer, uint imageIndex)
+    private unsafe void RecordCommandBuffer(CommandBuffer commandBuffer, uint imageIndex)
     {
         CommandBufferBeginInfo beginInfo = new()
         {
@@ -1287,6 +1271,15 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
         var colorBlendState = layout._colorBlendState.ToVulkanColorBlendState(vulkanColorBlendAttachmentStates);
 
+        PipelineViewportStateCreateInfo viewportState = new()
+        {
+            SType = StructureType.PipelineViewportStateCreateInfo,
+            ViewportCount = 1, // TODO: pass viewport count with pipelinelayout
+            PViewports = null,
+            ScissorCount = 1, // TODO: pass scissor count with pipelinelayout
+            PScissors = null
+        };
+
         var dynamicStates = stackalloc[]
         {
             DynamicState.Viewport,
@@ -1299,7 +1292,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PDynamicStates = dynamicStates
         };
 
-        // TODO: wtf is this?
+        // TODO: structure to pass variables to shaders
         PipelineLayoutCreateInfo pipelineLayout = new()
         {
             SType = StructureType.PipelineLayoutCreateInfo,
@@ -1322,14 +1315,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 PStages = shaderStagesPtr,
                 PVertexInputState = &vertexInputState,
                 PInputAssemblyState = &inputAssemblyState,
-                PViewportState = null,
+                PViewportState = &viewportState,
                 PRasterizationState = &rasterizationState,
                 PMultisampleState = &multisampleState,
                 PDepthStencilState = null, // TODO: add depth and stencil abstractions
                 PColorBlendState = &colorBlendState,
                 PDynamicState = &dynamicState,
-                Layout = _pipelineLayout, // TODO: wtf is this?
-                RenderPass = _renderPass, // TODO: do I need an abstraction over this?
+                Layout = _pipelineLayout,
+                RenderPass = _renderPass,
                 Subpass = 0,
                 BasePipelineHandle = default,
                 BasePipelineIndex = -1
