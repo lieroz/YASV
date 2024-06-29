@@ -51,8 +51,9 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Device _device;
     private Queue _graphicsQueue;
     private Queue _presentQueue;
-    private static string[] _deviceExtensions = [
-        KhrSwapchain.ExtensionName
+    private static readonly string[] _deviceExtensions = [
+        KhrSwapchain.ExtensionName,
+        KhrDynamicRendering.ExtensionName
     ];
     struct SwapchainSupportDetails
     {
@@ -66,10 +67,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
-    private Silk.NET.Vulkan.RenderPass _renderPass;
     private PipelineLayout _pipelineLayout;
     private Pipeline _graphicsPipeline;
-    private Framebuffer[]? _swapchainFramebuffers;
     private CommandPool _commandPool;
     private CommandBuffer[]? _commandBuffers;
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
@@ -88,9 +87,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateLogicalDevice();
         CreateSwapchain(_view);
         CreateImageViews();
-        CreateRenderPass();
         CreateGraphicsPipeline();
-        CreateFramebuffers();
         CreateCommandPool();
         CreateCommandBuffers();
         CreateSyncObjects();
@@ -102,7 +99,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         FreeCommandBuffers();
         DestroyCommandPool();
         DestroyGraphicsPipeline();
-        DestroyRenderPass();
 
         CleanupSwapchain();
 
@@ -121,7 +117,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CleanupSwapchain()
     {
-        DestroyFramebuffers();
         DestroyImageViews();
         DestroySwapchain();
     }
@@ -135,7 +130,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         CreateSwapchain(_view);
         CreateImageViews();
-        CreateFramebuffers();
     }
 
     public override unsafe void DrawFrame()
@@ -503,9 +497,16 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         fixed (DeviceQueueCreateInfo* deviceQueueCreateInfosPtr = deviceQueueCreateInfos.ToArray())
         {
+            PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures = new()
+            {
+                SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
+                DynamicRendering = true
+            };
+
             DeviceCreateInfo deviceCreateInfo = new()
             {
                 SType = StructureType.DeviceCreateInfo,
+                PNext = &dynamicRenderingFeatures,
                 PQueueCreateInfos = deviceQueueCreateInfosPtr,
                 QueueCreateInfoCount = (uint)deviceQueueCreateInfos.Count,
                 PEnabledFeatures = &physicalDeviceFeatures,
@@ -735,64 +736,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     #endregion
 
-    #region Render Pass
-
-    private unsafe void CreateRenderPass()
-    {
-        AttachmentDescription colorAttachment = new()
-        {
-            Format = _swapchainImageFormat,
-            Samples = SampleCountFlags.Count1Bit,
-            LoadOp = AttachmentLoadOp.Clear,
-            StoreOp = AttachmentStoreOp.Store,
-            StencilLoadOp = AttachmentLoadOp.DontCare,
-            StencilStoreOp = AttachmentStoreOp.DontCare,
-            InitialLayout = ImageLayout.Undefined,
-            FinalLayout = ImageLayout.PresentSrcKhr
-        };
-
-        AttachmentReference colorAttachmentReference = new()
-        {
-            Attachment = 0,
-            Layout = ImageLayout.ColorAttachmentOptimal
-        };
-
-        SubpassDescription subpassDescription = new()
-        {
-            PipelineBindPoint = PipelineBindPoint.Graphics,
-            ColorAttachmentCount = 1,
-            PColorAttachments = &colorAttachmentReference
-        };
-
-        SubpassDependency dependency = new()
-        {
-            SrcSubpass = Vk.SubpassExternal,
-            DstSubpass = 0,
-            SrcStageMask = PipelineStageFlags.ColorAttachmentOutputBit,
-            SrcAccessMask = 0,
-            DstStageMask = PipelineStageFlags.ColorAttachmentOutputBit,
-            DstAccessMask = AccessFlags.ColorAttachmentWriteBit
-        };
-
-        RenderPassCreateInfo renderPassInfo = new()
-        {
-            SType = StructureType.RenderPassCreateInfo,
-            AttachmentCount = 1,
-            PAttachments = &colorAttachment,
-            SubpassCount = 1,
-            PSubpasses = &subpassDescription,
-            DependencyCount = 1,
-            PDependencies = &dependency
-        };
-
-        var result = _vk.CreateRenderPass(_device, ref renderPassInfo, null, out _renderPass);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create render pass: {result}.");
-    }
-
-    private unsafe void DestroyRenderPass() => _vk.DestroyRenderPass(_device, _renderPass, null);
-
-    #endregion
-
     #region Graphics Pipeline State
 
     private unsafe ShaderModule CreateShaderModule(byte[] code)
@@ -847,7 +790,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         PipelineInputAssemblyStateCreateInfo inputAssemblyState = new()
         {
             SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-            Topology = PrimitiveTopology.TriangleList,
+            Topology = Silk.NET.Vulkan.PrimitiveTopology.TriangleList,
             PrimitiveRestartEnable = false
         };
 
@@ -865,10 +808,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             SType = StructureType.PipelineRasterizationStateCreateInfo,
             DepthClampEnable = false,
             RasterizerDiscardEnable = false,
-            PolygonMode = PolygonMode.Fill,
+            PolygonMode = Silk.NET.Vulkan.PolygonMode.Fill,
             LineWidth = 1f,
-            CullMode = CullModeFlags.BackBit,
-            FrontFace = FrontFace.Clockwise,
+            CullMode = Silk.NET.Vulkan.CullModeFlags.BackBit,
+            FrontFace = Silk.NET.Vulkan.FrontFace.Clockwise,
             DepthBiasEnable = false,
             DepthBiasConstantFactor = 0f,
             DepthBiasClamp = 0f,
@@ -879,7 +822,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         {
             SType = StructureType.PipelineMultisampleStateCreateInfo,
             SampleShadingEnable = false,
-            RasterizationSamples = SampleCountFlags.Count1Bit,
+            RasterizationSamples = Silk.NET.Vulkan.SampleCountFlags.Count1Bit,
             MinSampleShading = 1f,
             PSampleMask = null,
             AlphaToCoverageEnable = false,
@@ -888,24 +831,24 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         PipelineColorBlendAttachmentState colorBlendAttachmentState = new()
         {
-            ColorWriteMask = ColorComponentFlags.RBit
-                           | ColorComponentFlags.GBit
-                           | ColorComponentFlags.BBit
-                           | ColorComponentFlags.ABit,
+            ColorWriteMask = Silk.NET.Vulkan.ColorComponentFlags.RBit
+                           | Silk.NET.Vulkan.ColorComponentFlags.GBit
+                           | Silk.NET.Vulkan.ColorComponentFlags.BBit
+                           | Silk.NET.Vulkan.ColorComponentFlags.ABit,
             BlendEnable = false,
             SrcColorBlendFactor = Silk.NET.Vulkan.BlendFactor.One,
             DstColorBlendFactor = Silk.NET.Vulkan.BlendFactor.Zero,
-            ColorBlendOp = BlendOp.Add,
+            ColorBlendOp = Silk.NET.Vulkan.BlendOp.Add,
             SrcAlphaBlendFactor = Silk.NET.Vulkan.BlendFactor.One,
             DstAlphaBlendFactor = Silk.NET.Vulkan.BlendFactor.Zero,
-            AlphaBlendOp = BlendOp.Add
+            AlphaBlendOp = Silk.NET.Vulkan.BlendOp.Add
         };
 
         PipelineColorBlendStateCreateInfo colorBlendState = new()
         {
             SType = StructureType.PipelineColorBlendStateCreateInfo,
             LogicOpEnable = false,
-            LogicOp = LogicOp.Copy,
+            LogicOp = Silk.NET.Vulkan.LogicOp.Copy,
             AttachmentCount = 1,
             PAttachments = &colorBlendAttachmentState
         };
@@ -939,28 +882,39 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
 
-        GraphicsPipelineCreateInfo pipelineInfo = new()
+        fixed (Format* formatPtr = &_swapchainImageFormat)
         {
-            SType = StructureType.GraphicsPipelineCreateInfo,
-            StageCount = 2,
-            PStages = shaderStages,
-            PVertexInputState = &vertexInputState,
-            PInputAssemblyState = &inputAssemblyState,
-            PViewportState = &viewportState,
-            PRasterizationState = &rasterizationState,
-            PMultisampleState = &multisampleState,
-            PDepthStencilState = null,
-            PColorBlendState = &colorBlendState,
-            PDynamicState = &dynamicState,
-            Layout = _pipelineLayout,
-            RenderPass = _renderPass,
-            Subpass = 0,
-            BasePipelineHandle = default,
-            BasePipelineIndex = -1
-        };
+            PipelineRenderingCreateInfo pipelineRenderingCreateInfo = new()
+            {
+                SType = StructureType.PipelineRenderingCreateInfo,
+                ColorAttachmentCount = 1,
+                PColorAttachmentFormats = formatPtr
+            };
 
-        result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out _graphicsPipeline);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
+            GraphicsPipelineCreateInfo pipelineInfo = new()
+            {
+                SType = StructureType.GraphicsPipelineCreateInfo,
+                PNext = &pipelineRenderingCreateInfo,
+                StageCount = 2,
+                PStages = shaderStages,
+                PVertexInputState = &vertexInputState,
+                PInputAssemblyState = &inputAssemblyState,
+                PViewportState = &viewportState,
+                PRasterizationState = &rasterizationState,
+                PMultisampleState = &multisampleState,
+                PDepthStencilState = null,
+                PColorBlendState = &colorBlendState,
+                PDynamicState = &dynamicState,
+                Layout = _pipelineLayout,
+                RenderPass = default,
+                Subpass = 0,
+                BasePipelineHandle = default,
+                BasePipelineIndex = -1
+            };
+
+            result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out _graphicsPipeline);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
+        }
 
         SilkMarshal.Free((nint)vertShaderStage.PName);
         SilkMarshal.Free((nint)fragShaderStage.PName);
@@ -973,41 +927,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         _vk.DestroyPipeline(_device, _graphicsPipeline, null);
         _vk.DestroyPipelineLayout(_device, _pipelineLayout, null);
-    }
-
-    #endregion
-
-    #region Framebuffer
-
-    private unsafe void CreateFramebuffers()
-    {
-        _swapchainFramebuffers = new Framebuffer[_swapchainImageViews!.Length];
-        for (uint i = 0; i < _swapchainImageViews.Length; i++)
-        {
-            var attachments = stackalloc[] { _swapchainImageViews[i] };
-
-            FramebufferCreateInfo framebufferInfo = new()
-            {
-                SType = StructureType.FramebufferCreateInfo,
-                RenderPass = _renderPass,
-                AttachmentCount = 1,
-                PAttachments = attachments,
-                Width = _swapchainExtent.Width,
-                Height = _swapchainExtent.Height,
-                Layers = 1
-            };
-
-            var result = _vk.CreateFramebuffer(_device, &framebufferInfo, null, out _swapchainFramebuffers[i]);
-            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create framebuffer[{i}]: {result}.");
-        }
-    }
-
-    private unsafe void DestroyFramebuffers()
-    {
-        foreach (var framebuffer in _swapchainFramebuffers!)
-        {
-            _vk.DestroyFramebuffer(_device, framebuffer, null);
-        }
     }
 
     #endregion
@@ -1061,22 +980,51 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't begin command buffer: {result}.");
 
-        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
-        RenderPassBeginInfo renderPassBeginInfo = new()
+        ImageMemoryBarrier barrier = new()
         {
-            SType = StructureType.RenderPassBeginInfo,
-            RenderPass = _renderPass,
-            Framebuffer = _swapchainFramebuffers![imageIndex],
+            SType = StructureType.ImageMemoryBarrier,
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            OldLayout = ImageLayout.Undefined,
+            NewLayout = ImageLayout.ColorAttachmentOptimal,
+            Image = _swapchainImages![imageIndex],
+            SubresourceRange = new()
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _vk.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
+
+        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
+
+        RenderingAttachmentInfo colorAttachmentInfo = new()
+        {
+            SType = StructureType.RenderingAttachmentInfoKhr,
+            ImageView = _swapchainImageViews![imageIndex],
+            ImageLayout = ImageLayout.AttachmentOptimalKhr,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            ClearValue = clearColor
+        };
+
+        RenderingInfo renderingInfo = new()
+        {
+            SType = StructureType.RenderingInfoKhr,
             RenderArea = new()
             {
                 Offset = new(0, 0),
                 Extent = _swapchainExtent
             },
-            ClearValueCount = 1,
-            PClearValues = &clearColor
+            LayerCount = 1,
+            ColorAttachmentCount = 1,
+            PColorAttachments = &colorAttachmentInfo
         };
 
-        _vk.CmdBeginRenderPass(commandBuffer, ref renderPassBeginInfo, SubpassContents.Inline);
+        _vk.CmdBeginRendering(commandBuffer, ref renderingInfo);
 
         _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _graphicsPipeline);
 
@@ -1100,7 +1048,26 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         _vk.CmdDraw(commandBuffer, 3, 1, 0, 0);
 
-        _vk.CmdEndRenderPass(commandBuffer);
+        _vk.CmdEndRendering(commandBuffer);
+
+        barrier = new()
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            OldLayout = ImageLayout.ColorAttachmentOptimal,
+            NewLayout = ImageLayout.PresentSrcKhr,
+            Image = _swapchainImages![imageIndex],
+            SubresourceRange = new()
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _vk.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
 
         result = _vk.EndCommandBuffer(commandBuffer);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't end command buffer: {result}.");
@@ -1308,25 +1275,36 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         GraphicsPipelineCreateInfo pipelineInfo;
         fixed (PipelineShaderStageCreateInfo* shaderStagesPtr = shaderStages.ToArray())
         {
-            pipelineInfo = new()
+            fixed (Format* formatPtr = &_swapchainImageFormat)
             {
-                SType = StructureType.GraphicsPipelineCreateInfo,
-                StageCount = (uint)shaderStages.Count,
-                PStages = shaderStagesPtr,
-                PVertexInputState = &vertexInputState,
-                PInputAssemblyState = &inputAssemblyState,
-                PViewportState = &viewportState,
-                PRasterizationState = &rasterizationState,
-                PMultisampleState = &multisampleState,
-                PDepthStencilState = null, // TODO: add depth and stencil abstractions
-                PColorBlendState = &colorBlendState,
-                PDynamicState = &dynamicState,
-                Layout = _pipelineLayout,
-                RenderPass = _renderPass,
-                Subpass = 0,
-                BasePipelineHandle = default,
-                BasePipelineIndex = -1
-            };
+                PipelineRenderingCreateInfo pipelineRenderingCreateInfo = new()
+                {
+                    SType = StructureType.PipelineRenderingCreateInfo,
+                    ColorAttachmentCount = 1,
+                    PColorAttachmentFormats = formatPtr
+                };
+
+                pipelineInfo = new()
+                {
+                    SType = StructureType.GraphicsPipelineCreateInfo,
+                    PNext = &pipelineRenderingCreateInfo,
+                    StageCount = (uint)shaderStages.Count,
+                    PStages = shaderStagesPtr,
+                    PVertexInputState = &vertexInputState,
+                    PInputAssemblyState = &inputAssemblyState,
+                    PViewportState = &viewportState,
+                    PRasterizationState = &rasterizationState,
+                    PMultisampleState = &multisampleState,
+                    PDepthStencilState = null, // TODO: add depth and stencil abstractions
+                    PColorBlendState = &colorBlendState,
+                    PDynamicState = &dynamicState,
+                    Layout = _pipelineLayout,
+                    RenderPass = default,
+                    Subpass = 0,
+                    BasePipelineHandle = default,
+                    BasePipelineIndex = -1
+                };
+            }
         }
 
         result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pso);
