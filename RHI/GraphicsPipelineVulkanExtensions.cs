@@ -121,16 +121,19 @@ internal static class GraphicsPipelineVulkanExtensions
 
     internal static unsafe Silk.NET.Vulkan.PipelineMultisampleStateCreateInfo ToVulkanMultisampleState(this MultisampleState multisampleState)
     {
-        return new()
+        fixed (int* pSampleMask = multisampleState.SampleMask)
         {
-            SType = Silk.NET.Vulkan.StructureType.PipelineMultisampleStateCreateInfo,
-            SampleShadingEnable = multisampleState.SampleShadingEnable,
-            RasterizationSamples = multisampleState.SampleCountFlags.ToVulkanSampleCountFlags(),
-            MinSampleShading = multisampleState.MinSampleShading,
-            PSampleMask = (uint*)&multisampleState.SampleMask,
-            AlphaToCoverageEnable = multisampleState.AlphaCoverageEnable,
-            AlphaToOneEnable = multisampleState.AlphaToOneEnable
-        };
+            return new()
+            {
+                SType = Silk.NET.Vulkan.StructureType.PipelineMultisampleStateCreateInfo,
+                SampleShadingEnable = multisampleState.SampleShadingEnable,
+                RasterizationSamples = multisampleState.SampleCountFlags.ToVulkanSampleCountFlags(),
+                MinSampleShading = multisampleState.MinSampleShading,
+                PSampleMask = (uint*)pSampleMask,
+                AlphaToCoverageEnable = multisampleState.AlphaCoverageEnable,
+                AlphaToOneEnable = multisampleState.AlphaToOneEnable
+            };
+        }
     }
 
     internal static Silk.NET.Vulkan.CompareOp ToVulkanCompareOp(this CompareOp compareOp)
@@ -223,7 +226,7 @@ internal static class GraphicsPipelineVulkanExtensions
         };
     }
 
-    internal static Silk.NET.Vulkan.BlendOp ToVulkanBlendOperation(this BlendOp blendOperation)
+    internal static Silk.NET.Vulkan.BlendOp ToVulkanBlendOp(this BlendOp blendOperation)
     {
         return blendOperation switch
         {
@@ -263,10 +266,10 @@ internal static class GraphicsPipelineVulkanExtensions
             BlendEnable = colorBlendAttachmentState.BlendEnable,
             SrcColorBlendFactor = colorBlendAttachmentState.SrcAlphaBlendFactor.ToVulkanBlendFactor(),
             DstColorBlendFactor = colorBlendAttachmentState.DstColorBlendFactor.ToVulkanBlendFactor(),
-            ColorBlendOp = colorBlendAttachmentState.ColorBlendOperation.ToVulkanBlendOperation(),
+            ColorBlendOp = colorBlendAttachmentState.ColorBlendOp.ToVulkanBlendOp(),
             SrcAlphaBlendFactor = colorBlendAttachmentState.SrcAlphaBlendFactor.ToVulkanBlendFactor(),
             DstAlphaBlendFactor = colorBlendAttachmentState.DstAlphaBlendFactor.ToVulkanBlendFactor(),
-            AlphaBlendOp = colorBlendAttachmentState.AlphaBlendOperation.ToVulkanBlendOperation()
+            AlphaBlendOp = colorBlendAttachmentState.AlphaBlendOp.ToVulkanBlendOp()
         };
     }
 
@@ -297,7 +300,7 @@ internal static class GraphicsPipelineVulkanExtensions
     internal static unsafe Silk.NET.Vulkan.PipelineColorBlendStateCreateInfo ToVulkanColorBlendState(this ColorBlendState colorBlendState,
                                                                                    Silk.NET.Vulkan.PipelineColorBlendAttachmentState[] attachmentStates)
     {
-        fixed (Silk.NET.Vulkan.PipelineColorBlendAttachmentState* attachmentStatesPtr = attachmentStates)
+        fixed (Silk.NET.Vulkan.PipelineColorBlendAttachmentState* pAttachments = attachmentStates)
         {
             var vulkanColorBlendState = new Silk.NET.Vulkan.PipelineColorBlendStateCreateInfo()
             {
@@ -305,7 +308,7 @@ internal static class GraphicsPipelineVulkanExtensions
                 LogicOpEnable = colorBlendState.LogicOpEnable,
                 LogicOp = colorBlendState.LogicOp.ToVulkanLogicOp(),
                 AttachmentCount = (uint)attachmentStates.Length,
-                PAttachments = attachmentStatesPtr
+                PAttachments = pAttachments
             };
 
             for (int i = 0; i < 4; i++)

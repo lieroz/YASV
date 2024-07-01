@@ -22,34 +22,29 @@ public abstract class GraphicsDevice(IView view)
 
     private const int PreallocatedBuffersCount = 3;
 
-    private static ConcurrentBag<ICommandBuffer>[] _commandBuffers = new ConcurrentBag<ICommandBuffer>[Constants.MaxFramesInFlight];
+    private ConcurrentBag<ICommandBuffer>[] _commandBuffers = new ConcurrentBag<ICommandBuffer>[Constants.MaxFramesInFlight];
 
-    public static ICommandBuffer GetCommandBuffer(GraphicsDevice graphicsDevice, int frameNumber)
+    public ICommandBuffer GetCommandBuffer(int frameNumber)
     {
         int index = frameNumber % Constants.MaxFramesInFlight;
         var bag = _commandBuffers[index];
+
+        foreach (var buffer in bag)
+        {
+            ResetCommandBuffer(buffer);
+        }
+
         ICommandBuffer? commandBuffer;
 
         while (!bag.TryTake(out commandBuffer))
         {
-            foreach (var buffer in graphicsDevice.AllocateCommandBuffers(PreallocatedBuffersCount))
+            foreach (var buffer in AllocateCommandBuffers(PreallocatedBuffersCount))
             {
                 bag.Add(buffer);
             }
         }
 
         return commandBuffer;
-    }
-
-    public static void ResetCommandBuffers(GraphicsDevice graphicsDevice, int frameNumber)
-    {
-        int index = frameNumber % Constants.MaxFramesInFlight;
-        var bag = _commandBuffers[index];
-
-        foreach (var commandBuffer in bag)
-        {
-            graphicsDevice.ResetCommandBuffer(commandBuffer);
-        }
     }
 
     protected abstract ICommandBuffer[] AllocateCommandBuffers(int count);
@@ -72,4 +67,5 @@ public abstract class GraphicsDevice(IView view)
     public abstract void BindGraphicsPipeline(ICommandBuffer commandBuffer, GraphicsPipeline pipeline);
 
     public abstract Shader CreateShader(string path, Shader.Stage stage);
+    public abstract unsafe void DestroyShaders(Shader[] shaders);
 }

@@ -1230,10 +1230,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var inputAssemblyState = layout.InputAssemblyState.ToVulkanInputAssemblyState();
         var rasterizationState = layout.RasterizationState.ToVulkanRasterizationState();
         var multisampleState = layout.MultisampleState.ToVulkanMultisampleState();
-        var depthStencilState = layout.DepthStencilState.ToVulkanDepthStencilState();
+        var depthStencilState = layout.DepthStencilState?.ToVulkanDepthStencilState();
 
-        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[layout.ColorBlendAttachmentStates.Length];
-        for (int i = 0; i < layout.ColorBlendAttachmentStates.Length; i++)
+        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[layout.ColorBlendAttachmentStateCount];
+        for (int i = 0; i < layout.ColorBlendAttachmentStateCount; i++)
         {
             vulkanColorBlendAttachmentStates[i] = layout.ColorBlendAttachmentStates[i].ToVulkanColorBlendAttachmentState();
         }
@@ -1271,7 +1271,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PPushConstantRanges = null
         };
 
-        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout);
+        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout /* TODO: fix */);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
 
         GraphicsPipelineCreateInfo pipelineInfo;
@@ -1299,7 +1299,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                     PViewportState = &viewportState,
                     PRasterizationState = &rasterizationState,
                     PMultisampleState = &multisampleState,
-                    PDepthStencilState = &depthStencilState,
+                    PDepthStencilState = (PipelineDepthStencilStateCreateInfo*)&depthStencilState,
                     PColorBlendState = &colorBlendState,
                     PDynamicState = &dynamicState,
                     Layout = _pipelineLayout,
@@ -1338,6 +1338,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
 
             return new VulkanShaderWrapper(shaderModule, stage);
+        }
+    }
+
+    public override unsafe void DestroyShaders(Shader[] shaders)
+    {
+        foreach (var shader in shaders)
+        {
+            _vk.DestroyShaderModule(_device, shader.ToVulkanShader(), null);
         }
     }
 }

@@ -25,7 +25,7 @@ public partial class MainWindow : Window
 
     public void OnSelectionChanged(object? sender, SelectionChangedEventArgs args)
     {
-        _renderWindow!.CurrentScene = (IScene)Activator.CreateInstance(_sceneTypes[scenes.SelectedIndex])!;
+        _renderWindow!.CurrentScene = (BaseScene)Activator.CreateInstance(_sceneTypes[scenes.SelectedIndex], _renderWindow.GraphicsDevice)!;
     }
 
     private static List<Type> GetSceneTypes()

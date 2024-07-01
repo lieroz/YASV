@@ -15,11 +15,11 @@ public class SilkNETWindow : NativeControlHost, IDisposable
 {
     private bool _disposed = false;
     private IView? _window;
-    private GraphicsDevice? _renderingDevice;
+    private GraphicsDevice? _graphicsDevice;
     private SDLThread? _sdlThread;
     private readonly ConcurrentQueue<Action> _sdlActions = new();
 
-    public IScene? CurrentScene { get; set; }
+    public BaseScene? CurrentScene { get; set; }
 
     public void Dispose()
     {
@@ -54,8 +54,8 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         // TODO: Add packaging of vulkan-1 library
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
-        _renderingDevice = new VulkanDevice(_window);
-        _renderingDevice.Create(sdlApi);
+        _graphicsDevice = new VulkanDevice(_window);
+        _graphicsDevice.Create(sdlApi);
 
         _sdlThread = new(() =>
         {
@@ -68,11 +68,11 @@ public class SilkNETWindow : NativeControlHost, IDisposable
                 if (CurrentScene != null)
                 {
                     CurrentScene.Draw();
-                    _renderingDevice.DrawFrame(); // TODO: move to Draw in each Scene
+                    _graphicsDevice.DrawFrame(); // TODO: move to Draw in each Scene
                 }
             });
-            _renderingDevice.WaitIdle();
-            _renderingDevice.Destroy();
+            _graphicsDevice.WaitIdle();
+            _graphicsDevice.Destroy();
         })
         {
             Name = "SDLThread"
@@ -87,4 +87,6 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         base.OnSizeChanged(e);
         _sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)_window!.Handle, (int)e.NewSize.Width, (int)e.NewSize.Height));
     }
+
+    public GraphicsDevice GraphicsDevice { get => _graphicsDevice!; }
 }

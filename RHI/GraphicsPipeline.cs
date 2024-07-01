@@ -30,7 +30,7 @@ public struct MultisampleState
     public bool SampleShadingEnable { get; set; }
     public SampleCountFlags SampleCountFlags { get; set; }
     public float MinSampleShading { get; set; }
-    public int SampleMask;
+    public int[]? SampleMask { get; set; }
     public bool AlphaCoverageEnable { get; set; }
     public bool AlphaToOneEnable { get; set; }
 }
@@ -65,10 +65,10 @@ public struct ColorBlendAttachmentState
     public bool BlendEnable { get; set; }
     public BlendFactor SrcColorBlendFactor { get; set; }
     public BlendFactor DstColorBlendFactor { get; set; }
-    public BlendOp ColorBlendOperation { get; set; }
+    public BlendOp ColorBlendOp { get; set; }
     public BlendFactor SrcAlphaBlendFactor { get; set; }
     public BlendFactor DstAlphaBlendFactor { get; set; }
-    public BlendOp AlphaBlendOperation { get; set; }
+    public BlendOp AlphaBlendOp { get; set; }
 }
 
 public struct ColorBlendState
@@ -84,8 +84,9 @@ public class GraphicsPipelineLayout(Shader[] shaders,
                               InputAssemblyState inputAssemblyState,
                               RasterizationState rasterizationState,
                               MultisampleState multisampleState,
-                              DepthStencilState depthStencilState,
+                              DepthStencilState? depthStencilState,
                               ColorBlendAttachmentState[] colorBlendAttachmentStates,
+                              int colorBlendAttachmentStateCount,
                               ColorBlendState colorBlendState)
 {
     public Shader[] Shaders { get; private set; } = shaders;
@@ -93,8 +94,9 @@ public class GraphicsPipelineLayout(Shader[] shaders,
     public InputAssemblyState InputAssemblyState { get; private set; } = inputAssemblyState;
     public RasterizationState RasterizationState { get; private set; } = rasterizationState;
     public MultisampleState MultisampleState { get; private set; } = multisampleState;
-    public DepthStencilState DepthStencilState { get; private set; } = depthStencilState;
+    public DepthStencilState? DepthStencilState { get; private set; } = depthStencilState;
     public ColorBlendAttachmentState[] ColorBlendAttachmentStates { get; private set; } = colorBlendAttachmentStates;
+    public int ColorBlendAttachmentStateCount { get; private set; } = colorBlendAttachmentStateCount;
     public ColorBlendState ColorBlendState { get; private set; } = colorBlendState;
 }
 
@@ -106,8 +108,9 @@ public class GraphicsPipelineLayoutBuilder
     private InputAssemblyState _inputAssemblyState;
     private RasterizationState _rasterizationState;
     private MultisampleState _multisampleState;
-    private DepthStencilState _depthStencilState;
+    private DepthStencilState? _depthStencilState = null;
     private readonly ColorBlendAttachmentState[] _colorBlendAttachmentStates = new ColorBlendAttachmentState[Constants.SimultaneousRenderTargetCount];
+    private int _colorBlendAttachmentStateCount = 0;
     private ColorBlendState _colorBlendState;
 
     public GraphicsPipelineLayoutBuilder SetVertexShader(Shader shader)
@@ -162,48 +165,56 @@ public class GraphicsPipelineLayoutBuilder
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget0(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x0] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget1(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x1] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget2(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x2] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget3(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x3] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget4(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x4] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget5(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x5] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget6(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x6] = colorBlendAttachmentState;
         return this;
     }
 
     public GraphicsPipelineLayoutBuilder SetRenderTarget7(ColorBlendAttachmentState colorBlendAttachmentState)
     {
+        _colorBlendAttachmentStateCount++;
         _colorBlendAttachmentStates[0x7] = colorBlendAttachmentState;
         return this;
     }
@@ -224,6 +235,7 @@ public class GraphicsPipelineLayoutBuilder
             _multisampleState,
             _depthStencilState,
             _colorBlendAttachmentStates,
+            _colorBlendAttachmentStateCount,
             _colorBlendState);
     }
 }
