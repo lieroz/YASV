@@ -48,6 +48,30 @@ public enum SampleCountFlags
     Count64Bit
 }
 
+public enum CompareOp
+{
+    Never,
+    Less,
+    Equal,
+    LessOrEqual,
+    Greater,
+    NotEqual,
+    GreaterOrEqual,
+    Always
+}
+
+public enum StencilOp
+{
+    Keep,
+    Zero,
+    Replace,
+    IncrementAndClamp,
+    DecrementAndClamp,
+    Invert,
+    IncrementAndWrap,
+    DecrementAndWrap
+}
+
 public enum BlendFactor
 {
     Zero,
@@ -107,4 +131,10 @@ public enum LogicOp
     OrInverted,
     Nand,
     Set
+}
+
+public static class Constants
+{
+    public const int MaxFramesInFlight = 2;
+    public const int SimultaneousRenderTargetCount = 0x8;
 }

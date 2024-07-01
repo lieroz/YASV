@@ -14,7 +14,7 @@ internal static class GraphicsPipelineVulkanExtensions
         return ((VulkanGraphicsPipelineWrapper)graphicsPipeline)._pipeline;
     }
 
-    internal static Silk.NET.Vulkan.PipelineVertexInputStateCreateInfo ToVulkanVertexInputState(this GraphicsPipelineLayout.VertexInputState vertexInputState)
+    internal static Silk.NET.Vulkan.PipelineVertexInputStateCreateInfo ToVulkanVertexInputState(this VertexInputState vertexInputState)
     {
         return new()
         {
@@ -41,7 +41,7 @@ internal static class GraphicsPipelineVulkanExtensions
         };
     }
 
-    internal static Silk.NET.Vulkan.PipelineInputAssemblyStateCreateInfo ToVulkanInputAssemblyState(this GraphicsPipelineLayout.InputAssemblyState inputAssemblyState)
+    internal static Silk.NET.Vulkan.PipelineInputAssemblyStateCreateInfo ToVulkanInputAssemblyState(this InputAssemblyState inputAssemblyState)
     {
         return new()
         {
@@ -85,7 +85,7 @@ internal static class GraphicsPipelineVulkanExtensions
 
     }
 
-    internal static Silk.NET.Vulkan.PipelineRasterizationStateCreateInfo ToVulkanRasterizationState(this GraphicsPipelineLayout.RasterizationState rasterizationState)
+    internal static Silk.NET.Vulkan.PipelineRasterizationStateCreateInfo ToVulkanRasterizationState(this RasterizationState rasterizationState)
     {
         return new()
         {
@@ -119,7 +119,7 @@ internal static class GraphicsPipelineVulkanExtensions
         };
     }
 
-    internal static unsafe Silk.NET.Vulkan.PipelineMultisampleStateCreateInfo ToVulkanMultisampleState(this GraphicsPipelineLayout.MultisampleState multisampleState)
+    internal static unsafe Silk.NET.Vulkan.PipelineMultisampleStateCreateInfo ToVulkanMultisampleState(this MultisampleState multisampleState)
     {
         return new()
         {
@@ -130,6 +130,69 @@ internal static class GraphicsPipelineVulkanExtensions
             PSampleMask = (uint*)&multisampleState.SampleMask,
             AlphaToCoverageEnable = multisampleState.AlphaCoverageEnable,
             AlphaToOneEnable = multisampleState.AlphaToOneEnable
+        };
+    }
+
+    internal static Silk.NET.Vulkan.CompareOp ToVulkanCompareOp(this CompareOp compareOp)
+    {
+        return compareOp switch
+        {
+            CompareOp.Never => Silk.NET.Vulkan.CompareOp.Never,
+            CompareOp.Less => Silk.NET.Vulkan.CompareOp.Less,
+            CompareOp.Equal => Silk.NET.Vulkan.CompareOp.Equal,
+            CompareOp.LessOrEqual => Silk.NET.Vulkan.CompareOp.LessOrEqual,
+            CompareOp.Greater => Silk.NET.Vulkan.CompareOp.Greater,
+            CompareOp.NotEqual => Silk.NET.Vulkan.CompareOp.NotEqual,
+            CompareOp.GreaterOrEqual => Silk.NET.Vulkan.CompareOp.GreaterOrEqual,
+            CompareOp.Always => Silk.NET.Vulkan.CompareOp.Always,
+            _ => throw new NotSupportedException($"Compare operation '{compareOp}' not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.StencilOp ToVulkanStencilOp(this StencilOp stencilOp)
+    {
+        return stencilOp switch
+        {
+            StencilOp.Keep => Silk.NET.Vulkan.StencilOp.Keep,
+            StencilOp.Zero => Silk.NET.Vulkan.StencilOp.Zero,
+            StencilOp.Replace => Silk.NET.Vulkan.StencilOp.Replace,
+            StencilOp.IncrementAndClamp => Silk.NET.Vulkan.StencilOp.IncrementAndClamp,
+            StencilOp.DecrementAndClamp => Silk.NET.Vulkan.StencilOp.DecrementAndClamp,
+            StencilOp.Invert => Silk.NET.Vulkan.StencilOp.Invert,
+            StencilOp.IncrementAndWrap => Silk.NET.Vulkan.StencilOp.IncrementAndWrap,
+            StencilOp.DecrementAndWrap => Silk.NET.Vulkan.StencilOp.DecrementAndWrap,
+            _ => throw new NotSupportedException($"Stencil operation '{stencilOp}' not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.StencilOpState ToVulkanStencilOpState(this StencilOpState stencilOpState)
+    {
+        return new()
+        {
+            FailOp = stencilOpState.FailOp.ToVulkanStencilOp(),
+            PassOp = stencilOpState.PassOp.ToVulkanStencilOp(),
+            DepthFailOp = stencilOpState.DepthFailOp.ToVulkanStencilOp(),
+            CompareOp = stencilOpState.CompareOp.ToVulkanCompareOp(),
+            CompareMask = (uint)stencilOpState.CompareMask,
+            WriteMask = (uint)stencilOpState.WriteMask,
+            Reference = (uint)stencilOpState.Reference
+        };
+    }
+
+    internal static Silk.NET.Vulkan.PipelineDepthStencilStateCreateInfo ToVulkanDepthStencilState(this DepthStencilState depthStencilState)
+    {
+        return new()
+        {
+            SType = Silk.NET.Vulkan.StructureType.PipelineDepthStencilStateCreateInfo,
+            DepthTestEnable = depthStencilState.DepthTestEnable,
+            DepthWriteEnable = depthStencilState.DepthWriteEnable,
+            DepthCompareOp = depthStencilState.DepthCompareOp.ToVulkanCompareOp(),
+            DepthBoundsTestEnable = depthStencilState.DepthBoundsTestEnable,
+            StencilTestEnable = depthStencilState.StencilTestEnable,
+            Front = depthStencilState.Front.ToVulkanStencilOpState(),
+            Back = depthStencilState.Back.ToVulkanStencilOpState(),
+            MinDepthBounds = depthStencilState.MinDepthBounds,
+            MaxDepthBounds = depthStencilState.MaxDepthBounds
         };
     }
 
@@ -186,7 +249,7 @@ internal static class GraphicsPipelineVulkanExtensions
     }
 
     internal static Silk.NET.Vulkan.PipelineColorBlendAttachmentState ToVulkanColorBlendAttachmentState(
-        this GraphicsPipelineLayout.ColorBlendAttachmentState colorBlendAttachmentState)
+        this ColorBlendAttachmentState colorBlendAttachmentState)
     {
         var colorWriteMask = Silk.NET.Vulkan.ColorComponentFlags.None;
         foreach (var component in colorBlendAttachmentState.ColorComponentFlags)
@@ -231,7 +294,7 @@ internal static class GraphicsPipelineVulkanExtensions
         };
     }
 
-    internal static unsafe Silk.NET.Vulkan.PipelineColorBlendStateCreateInfo ToVulkanColorBlendState(this GraphicsPipelineLayout.ColorBlendState colorBlendState,
+    internal static unsafe Silk.NET.Vulkan.PipelineColorBlendStateCreateInfo ToVulkanColorBlendState(this ColorBlendState colorBlendState,
                                                                                    Silk.NET.Vulkan.PipelineColorBlendAttachmentState[] attachmentStates)
     {
         fixed (Silk.NET.Vulkan.PipelineColorBlendAttachmentState* attachmentStatesPtr = attachmentStates)

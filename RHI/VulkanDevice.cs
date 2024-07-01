@@ -51,7 +51,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Device _device;
     private Queue _graphicsQueue;
     private Queue _presentQueue;
-    private static readonly string[] _deviceExtensions = [
+    private static string[] _deviceExtensions = [
         KhrSwapchain.ExtensionName,
         KhrDynamicRendering.ExtensionName
     ];
@@ -194,7 +194,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't present image: {result}.");
 
-        _currentFrame = (_currentFrame + 1) % MaxFramesInFlight;
+        _currentFrame = (_currentFrame + 1) % Constants.MaxFramesInFlight;
     }
 
     #region Instance
@@ -395,10 +395,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
 
         var availableExtensionsNames = availableExtensions.Select(ext => SilkMarshal.PtrToString((nint)ext.ExtensionName)).ToHashSet();
-        // if (availableExtensionsNames.Contains("VK_KHR_portability_subset"))
-        // {
-        //     _deviceExtensions = [.. _deviceExtensions.Append("VK_KHR_portability_subset")];
-        // }
+        if (availableExtensionsNames.Contains("VK_KHR_portability_subset"))
+        {
+            _deviceExtensions = [.. _deviceExtensions.Append("VK_KHR_portability_subset")];
+        }
         return _deviceExtensions.All(availableExtensionsNames.Contains);
     }
 
@@ -952,14 +952,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CreateCommandBuffers()
     {
-        _commandBuffers = new CommandBuffer[MaxFramesInFlight];
+        _commandBuffers = new CommandBuffer[Constants.MaxFramesInFlight];
 
         CommandBufferAllocateInfo allocateInfo = new()
         {
             SType = StructureType.CommandBufferAllocateInfo,
             CommandPool = _commandPool,
             Level = CommandBufferLevel.Primary,
-            CommandBufferCount = MaxFramesInFlight
+            CommandBufferCount = Constants.MaxFramesInFlight
         };
 
         var result = _vk.AllocateCommandBuffers(_device, &allocateInfo, _commandBuffers);
@@ -1079,9 +1079,9 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void CreateSyncObjects()
     {
-        _imageAvailableSemaphores = new Silk.NET.Vulkan.Semaphore[MaxFramesInFlight];
-        _renderFinishedSemaphores = new Silk.NET.Vulkan.Semaphore[MaxFramesInFlight];
-        _inFlightFences = new Fence[MaxFramesInFlight];
+        _imageAvailableSemaphores = new Silk.NET.Vulkan.Semaphore[Constants.MaxFramesInFlight];
+        _renderFinishedSemaphores = new Silk.NET.Vulkan.Semaphore[Constants.MaxFramesInFlight];
+        _inFlightFences = new Fence[Constants.MaxFramesInFlight];
 
         SemaphoreCreateInfo semaphoreInfo = new()
         {
@@ -1094,7 +1094,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             Flags = FenceCreateFlags.SignaledBit
         };
 
-        for (int i = 0; i < MaxFramesInFlight; i++)
+        for (int i = 0; i < Constants.MaxFramesInFlight; i++)
         {
             var result = _vk.CreateSemaphore(_device, ref semaphoreInfo, null, out _imageAvailableSemaphores[i]);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create semaphore: {result}.");
@@ -1109,7 +1109,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void DestroySyncObjects()
     {
-        for (int i = 0; i < MaxFramesInFlight; i++)
+        for (int i = 0; i < Constants.MaxFramesInFlight; i++)
         {
             _vk.DestroySemaphore(_device, _imageAvailableSemaphores![i], null);
             _vk.DestroySemaphore(_device, _renderFinishedSemaphores![i], null);
@@ -1211,7 +1211,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     public override unsafe GraphicsPipeline CreateGraphicsPipeline(GraphicsPipelineLayout layout)
     {
         var shaderStages = new List<PipelineShaderStageCreateInfo>();
-        foreach (var shader in layout._shaders)
+        foreach (var shader in layout.Shaders)
         {
             if (shader != null)
             {
@@ -1226,24 +1226,26 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             }
         }
 
-        var vertexInputState = layout._vertexInputState.ToVulkanVertexInputState();
-        var inputAssemblyState = layout._inputAssemblyState.ToVulkanInputAssemblyState();
-        var rasterizationState = layout._rasterizationState.ToVulkanRasterizationState();
-        var multisampleState = layout._multisampleState.ToVulkanMultisampleState();
+        var vertexInputState = layout.VertexInputState.ToVulkanVertexInputState();
+        var inputAssemblyState = layout.InputAssemblyState.ToVulkanInputAssemblyState();
+        var rasterizationState = layout.RasterizationState.ToVulkanRasterizationState();
+        var multisampleState = layout.MultisampleState.ToVulkanMultisampleState();
+        var depthStencilState = layout.DepthStencilState.ToVulkanDepthStencilState();
 
-        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[layout._colorBlendAttachmentStates.Length];
-        for (int i = 0; i < layout._colorBlendAttachmentStates.Length; i++)
+        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[layout.ColorBlendAttachmentStates.Length];
+        for (int i = 0; i < layout.ColorBlendAttachmentStates.Length; i++)
         {
-            vulkanColorBlendAttachmentStates[i] = layout._colorBlendAttachmentStates[i].ToVulkanColorBlendAttachmentState();
+            vulkanColorBlendAttachmentStates[i] = layout.ColorBlendAttachmentStates[i].ToVulkanColorBlendAttachmentState();
         }
-        var colorBlendState = layout._colorBlendState.ToVulkanColorBlendState(vulkanColorBlendAttachmentStates);
+        var colorBlendState = layout.ColorBlendState.ToVulkanColorBlendState(vulkanColorBlendAttachmentStates);
 
+        // https://docs.vulkan.org/guide/latest/dynamic_state.html
         PipelineViewportStateCreateInfo viewportState = new()
         {
             SType = StructureType.PipelineViewportStateCreateInfo,
-            ViewportCount = 1, // TODO: pass viewport count with pipelinelayout
+            ViewportCount = 1,
             PViewports = null,
-            ScissorCount = 1, // TODO: pass scissor count with pipelinelayout
+            ScissorCount = 1,
             PScissors = null
         };
 
@@ -1280,7 +1282,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 PipelineRenderingCreateInfo pipelineRenderingCreateInfo = new()
                 {
                     SType = StructureType.PipelineRenderingCreateInfo,
-                    ColorAttachmentCount = 1,
+                    ColorAttachmentCount = colorBlendState.AttachmentCount,
                     PColorAttachmentFormats = formatPtr
                 };
 
@@ -1288,14 +1290,16 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 {
                     SType = StructureType.GraphicsPipelineCreateInfo,
                     PNext = &pipelineRenderingCreateInfo,
+                    Flags = PipelineCreateFlags.None,
                     StageCount = (uint)shaderStages.Count,
                     PStages = shaderStagesPtr,
                     PVertexInputState = &vertexInputState,
                     PInputAssemblyState = &inputAssemblyState,
+                    PTessellationState = null,
                     PViewportState = &viewportState,
                     PRasterizationState = &rasterizationState,
                     PMultisampleState = &multisampleState,
-                    PDepthStencilState = null, // TODO: add depth and stencil abstractions
+                    PDepthStencilState = &depthStencilState,
                     PColorBlendState = &colorBlendState,
                     PDynamicState = &dynamicState,
                     Layout = _pipelineLayout,

@@ -10,7 +10,6 @@ public interface ITexture { }
 
 public abstract class GraphicsDevice(IView view)
 {
-    public const int MaxFramesInFlight = 2;
     protected readonly IView _view = view;
 
     public abstract void Create(Sdl sdlApi);
@@ -23,11 +22,11 @@ public abstract class GraphicsDevice(IView view)
 
     private const int PreallocatedBuffersCount = 3;
 
-    private static ConcurrentBag<ICommandBuffer>[] _commandBuffers = new ConcurrentBag<ICommandBuffer>[GraphicsDevice.MaxFramesInFlight];
+    private static ConcurrentBag<ICommandBuffer>[] _commandBuffers = new ConcurrentBag<ICommandBuffer>[Constants.MaxFramesInFlight];
 
     public static ICommandBuffer GetCommandBuffer(GraphicsDevice graphicsDevice, int frameNumber)
     {
-        int index = frameNumber % MaxFramesInFlight;
+        int index = frameNumber % Constants.MaxFramesInFlight;
         var bag = _commandBuffers[index];
         ICommandBuffer? commandBuffer;
 
@@ -44,7 +43,7 @@ public abstract class GraphicsDevice(IView view)
 
     public static void ResetCommandBuffers(GraphicsDevice graphicsDevice, int frameNumber)
     {
-        int index = frameNumber % MaxFramesInFlight;
+        int index = frameNumber % Constants.MaxFramesInFlight;
         var bag = _commandBuffers[index];
 
         foreach (var commandBuffer in bag)
