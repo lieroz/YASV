@@ -4,13 +4,11 @@ using YASV.RHI;
 namespace YASV.Scenes;
 
 [Scene]
-public class TriangleScene : BaseScene, IDisposable
+public class TriangleScene : BaseScene
 {
-    // TODO: Add graphics object destruction
     private readonly GraphicsPipelineLayout _triangleGraphicsPipelineLayout;
     private readonly GraphicsPipelineDesc _triangleGraphicsPipelineDesc;
     private readonly GraphicsPipeline _triangleGraphicsPipeline;
-    private bool _disposed = false;
 
     public TriangleScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
     {
@@ -74,23 +72,12 @@ public class TriangleScene : BaseScene, IDisposable
         _triangleGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_triangleGraphicsPipelineDesc, _triangleGraphicsPipelineLayout);
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
-    }
 
-    protected override void Dispose(bool disposing)
-    {
-        if (!_disposed)
+        DisposeUnmanaged += () =>
         {
-            if (disposing)
-            {
-                // dispose managed state (managed objects)
-            }
-
-            // free unmanaged resources (unmanaged objects) and override finalizer
-            // set large fields to null
             _graphicsDevice.DestroyGraphicsPipelines([_triangleGraphicsPipeline]);
             _graphicsDevice.DestroyGraphicsPipelineLayouts([_triangleGraphicsPipelineLayout]);
-            _disposed = true;
-        }
+        };
     }
 
     public override void Draw()
