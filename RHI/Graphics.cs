@@ -136,5 +136,4 @@ public enum LogicOp
 public static class Constants
 {
     public const int MaxFramesInFlight = 2;
-    public const int SimultaneousRenderTargetCount = 0x8;
 }

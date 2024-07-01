@@ -180,13 +180,16 @@ public class GraphicsPipelineDescBuilder
         return this;
     }
 
-    public GraphicsPipelineDescBuilder SetRenderTarget(ColorBlendAttachmentState colorBlendAttachmentState)
+    public GraphicsPipelineDescBuilder SetColorBlendAttachmentState(int index, ColorBlendAttachmentState colorBlendAttachmentState)
     {
-        if (_colorBlendAttachmentStates.Count == Constants.SimultaneousRenderTargetCount)
+        if (_colorBlendAttachmentStates.Count <= index)
         {
-            throw new ArgumentException($"Render target count limit exceeded: {Constants.SimultaneousRenderTargetCount}.");
+            for (int i = _colorBlendAttachmentStates.Count; i <= index; i++)
+            {
+                _colorBlendAttachmentStates.Add(default);
+            }
         }
-        _colorBlendAttachmentStates.Add(colorBlendAttachmentState);
+        _colorBlendAttachmentStates[index] = colorBlendAttachmentState;
         return this;
     }
 

@@ -42,7 +42,7 @@ public class TriangleScene : BaseScene
                 AlphaCoverageEnable = false,
                 AlphaToOneEnable = false
             })
-            .SetRenderTarget(new()
+            .SetColorBlendAttachmentState(0, new()
             {
                 ColorComponentFlags = [ColorComponentFlags.RBit, ColorComponentFlags.GBit, ColorComponentFlags.BBit, ColorComponentFlags.ABit],
                 BlendEnable = false,
