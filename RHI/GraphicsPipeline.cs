@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace YASV.RHI;
 
@@ -79,14 +80,32 @@ public struct ColorBlendState
     public float[] BlendConstants { get; set; }
 }
 
-public class GraphicsPipelineLayout(Shader[] shaders,
+public class DescriptorSetLayoutDesc
+{
+}
+
+public class PushConstantRange
+{
+}
+
+// TODO: https://vkguide.dev/docs/extra-chapter/abstracting_descriptors/
+public class GraphicsPipelineLayoutDesc
+{
+    public int SetLayoutCount { get; set; }
+    public DescriptorSetLayoutDesc[]? SetLayouts { get; set; }
+    public int PushConstantRangeCount { get; set; }
+    public PushConstantRange[]? PushConstantRanges { get; set; }
+}
+
+public class GraphicsPipelineLayout { }
+
+public class GraphicsPipelineDesc(Shader[] shaders,
                               VertexInputState vertexInputState,
                               InputAssemblyState inputAssemblyState,
                               RasterizationState rasterizationState,
                               MultisampleState multisampleState,
                               DepthStencilState? depthStencilState,
-                              ColorBlendAttachmentState[] colorBlendAttachmentStates,
-                              int colorBlendAttachmentStateCount,
+                              IList<ColorBlendAttachmentState> colorBlendAttachmentStates,
                               ColorBlendState colorBlendState)
 {
     public Shader[] Shaders { get; private set; } = shaders;
@@ -95,13 +114,12 @@ public class GraphicsPipelineLayout(Shader[] shaders,
     public RasterizationState RasterizationState { get; private set; } = rasterizationState;
     public MultisampleState MultisampleState { get; private set; } = multisampleState;
     public DepthStencilState? DepthStencilState { get; private set; } = depthStencilState;
-    public ColorBlendAttachmentState[] ColorBlendAttachmentStates { get; private set; } = colorBlendAttachmentStates;
-    public int ColorBlendAttachmentStateCount { get; private set; } = colorBlendAttachmentStateCount;
+    public IList<ColorBlendAttachmentState> ColorBlendAttachmentStates { get; private set; } = colorBlendAttachmentStates;
     public ColorBlendState ColorBlendState { get; private set; } = colorBlendState;
 }
 
 // TODO: Add validation for fields
-public class GraphicsPipelineLayoutBuilder
+public class GraphicsPipelineDescBuilder
 {
     private readonly Shader[] _shaders = new Shader[(int)Shader.Stage.Count];
     private VertexInputState _vertexInputState;
@@ -109,123 +127,76 @@ public class GraphicsPipelineLayoutBuilder
     private RasterizationState _rasterizationState;
     private MultisampleState _multisampleState;
     private DepthStencilState? _depthStencilState = null;
-    private readonly ColorBlendAttachmentState[] _colorBlendAttachmentStates = new ColorBlendAttachmentState[Constants.SimultaneousRenderTargetCount];
-    private int _colorBlendAttachmentStateCount = 0;
+    private readonly IList<ColorBlendAttachmentState> _colorBlendAttachmentStates = [];
     private ColorBlendState _colorBlendState;
 
-    public GraphicsPipelineLayoutBuilder SetVertexShader(Shader shader)
+    public GraphicsPipelineDescBuilder SetVertexShader(Shader shader)
     {
         if (shader._stage != Shader.Stage.Vertex)
         {
-            throw new ArgumentException($"Shader stage is invalid: {shader._stage}");
+            throw new ArgumentException($"Shader stage is invalid: {shader._stage}.");
         }
         _shaders[(int)Shader.Stage.Vertex] = shader;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetFragmentShader(Shader shader)
+    public GraphicsPipelineDescBuilder SetFragmentShader(Shader shader)
     {
         if (shader._stage != Shader.Stage.Fragment)
         {
-            throw new ArgumentException($"Shader stage is invalid: {shader._stage}");
+            throw new ArgumentException($"Shader stage is invalid: {shader._stage}.");
         }
         _shaders[(int)Shader.Stage.Fragment] = shader;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetVertexInputState(VertexInputState vertexInputState)
+    public GraphicsPipelineDescBuilder SetVertexInputState(VertexInputState vertexInputState)
     {
         _vertexInputState = vertexInputState;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetInputAssemblyState(InputAssemblyState inputAssemblyState)
+    public GraphicsPipelineDescBuilder SetInputAssemblyState(InputAssemblyState inputAssemblyState)
     {
         _inputAssemblyState = inputAssemblyState;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetRasterizationState(RasterizationState rasterizationState)
+    public GraphicsPipelineDescBuilder SetRasterizationState(RasterizationState rasterizationState)
     {
         _rasterizationState = rasterizationState;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetMultisampleState(MultisampleState multisampleState)
+    public GraphicsPipelineDescBuilder SetMultisampleState(MultisampleState multisampleState)
     {
         _multisampleState = multisampleState;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetDepthStencilState(DepthStencilState depthStencilState)
+    public GraphicsPipelineDescBuilder SetDepthStencilState(DepthStencilState depthStencilState)
     {
         _depthStencilState = depthStencilState;
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetRenderTarget0(ColorBlendAttachmentState colorBlendAttachmentState)
+    public GraphicsPipelineDescBuilder SetRenderTarget(ColorBlendAttachmentState colorBlendAttachmentState)
     {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x0] = colorBlendAttachmentState;
+        if (_colorBlendAttachmentStates.Count == Constants.SimultaneousRenderTargetCount)
+        {
+            throw new ArgumentException($"Render target count limit exceeded: {Constants.SimultaneousRenderTargetCount}.");
+        }
+        _colorBlendAttachmentStates.Add(colorBlendAttachmentState);
         return this;
     }
 
-    public GraphicsPipelineLayoutBuilder SetRenderTarget1(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x1] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetRenderTarget2(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x2] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetRenderTarget3(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x3] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetRenderTarget4(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x4] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetRenderTarget5(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x5] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetRenderTarget6(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x6] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetRenderTarget7(ColorBlendAttachmentState colorBlendAttachmentState)
-    {
-        _colorBlendAttachmentStateCount++;
-        _colorBlendAttachmentStates[0x7] = colorBlendAttachmentState;
-        return this;
-    }
-
-    public GraphicsPipelineLayoutBuilder SetColorBlendState(ColorBlendState colorBlendState)
+    public GraphicsPipelineDescBuilder SetColorBlendState(ColorBlendState colorBlendState)
     {
         _colorBlendState = colorBlendState;
         return this;
     }
 
-    public GraphicsPipelineLayout Build()
+    public GraphicsPipelineDesc Build()
     {
         return new(
             _shaders,
@@ -235,7 +206,6 @@ public class GraphicsPipelineLayoutBuilder
             _multisampleState,
             _depthStencilState,
             _colorBlendAttachmentStates,
-            _colorBlendAttachmentStateCount,
             _colorBlendState);
     }
 }

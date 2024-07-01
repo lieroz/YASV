@@ -1,20 +1,23 @@
+using System;
 using YASV.RHI;
 
 namespace YASV.Scenes;
 
 [Scene]
-public class TriangleScene : BaseScene
+public class TriangleScene : BaseScene, IDisposable
 {
     // TODO: Add graphics object destruction
     private readonly GraphicsPipelineLayout _triangleGraphicsPipelineLayout;
+    private readonly GraphicsPipelineDesc _triangleGraphicsPipelineDesc;
     private readonly GraphicsPipeline _triangleGraphicsPipeline;
+    private bool _disposed = false;
 
     public TriangleScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
     {
         _graphicsDevice = graphicsDevice;
         var vertexShader = _graphicsDevice.CreateShader("Shaders/triangle.vert.hlsl", Shader.Stage.Vertex);
         var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", Shader.Stage.Fragment);
-        _triangleGraphicsPipelineLayout = new GraphicsPipelineLayoutBuilder()
+        _triangleGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
             .SetVertexShader(vertexShader)
             .SetFragmentShader(fragmentShader)
             .SetVertexInputState(default)
@@ -41,7 +44,7 @@ public class TriangleScene : BaseScene
                 AlphaCoverageEnable = false,
                 AlphaToOneEnable = false
             })
-            .SetRenderTarget0(new()
+            .SetRenderTarget(new()
             {
                 ColorComponentFlags = [ColorComponentFlags.RBit, ColorComponentFlags.GBit, ColorComponentFlags.BBit, ColorComponentFlags.ABit],
                 BlendEnable = false,
@@ -61,9 +64,33 @@ public class TriangleScene : BaseScene
             })
             .Build();
 
-        _triangleGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_triangleGraphicsPipelineLayout);
+        _triangleGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
+        {
+            SetLayoutCount = 0,
+            SetLayouts = null,
+            PushConstantRangeCount = 0,
+            PushConstantRanges = null
+        });
+        _triangleGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_triangleGraphicsPipelineDesc, _triangleGraphicsPipelineLayout);
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                // dispose managed state (managed objects)
+            }
+
+            // free unmanaged resources (unmanaged objects) and override finalizer
+            // set large fields to null
+            _graphicsDevice.DestroyGraphicsPipelines([_triangleGraphicsPipeline]);
+            _graphicsDevice.DestroyGraphicsPipelineLayouts([_triangleGraphicsPipelineLayout]);
+            _disposed = true;
+        }
     }
 
     public override void Draw()

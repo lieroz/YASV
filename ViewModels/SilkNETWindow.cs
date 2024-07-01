@@ -36,6 +36,7 @@ public class SilkNETWindow : NativeControlHost, IDisposable
             if (disposing)
             {
                 // dispose managed state (managed objects)
+                CurrentScene?.Dispose();
             }
 
             // free unmanaged resources (unmanaged objects) and override finalizer

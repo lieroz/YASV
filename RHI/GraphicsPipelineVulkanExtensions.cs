@@ -4,14 +4,19 @@ namespace YASV.RHI;
 
 internal class VulkanGraphicsPipelineWrapper(Silk.NET.Vulkan.Pipeline pipeline) : GraphicsPipeline
 {
-    public Silk.NET.Vulkan.Pipeline _pipeline = pipeline;
+    public Silk.NET.Vulkan.Pipeline Pipeline { get; set; } = pipeline;
+}
+
+internal class VulkanGraphicsPipelineLayoutWrapper(Silk.NET.Vulkan.PipelineLayout pipelineLayout) : GraphicsPipelineLayout
+{
+    public Silk.NET.Vulkan.PipelineLayout PipelineLayout { get; set; } = pipelineLayout;
 }
 
 internal static class GraphicsPipelineVulkanExtensions
 {
     internal static Silk.NET.Vulkan.Pipeline ToVulkanGraphicsPipeline(this GraphicsPipeline graphicsPipeline)
     {
-        return ((VulkanGraphicsPipelineWrapper)graphicsPipeline)._pipeline;
+        return ((VulkanGraphicsPipelineWrapper)graphicsPipeline).Pipeline;
     }
 
     internal static Silk.NET.Vulkan.PipelineVertexInputStateCreateInfo ToVulkanVertexInputState(this VertexInputState vertexInputState)
@@ -318,5 +323,10 @@ internal static class GraphicsPipelineVulkanExtensions
 
             return vulkanColorBlendState;
         }
+    }
+
+    internal static Silk.NET.Vulkan.PipelineLayout ToVulkanGraphicsPipelineLayout(this GraphicsPipelineLayout layout)
+    {
+        return ((VulkanGraphicsPipelineLayoutWrapper)layout).PipelineLayout;
     }
 }

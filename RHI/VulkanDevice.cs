@@ -1197,21 +1197,36 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdDrawIndexed(commandBuffer.ToVulkanCommandBuffer(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 
-    public override void BeginRenderPass(ICommandBuffer commandBuffer)
+    public override unsafe GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc)
     {
-        var renderPassBeginInfo = new RenderPassBeginInfo();
-        _vk.CmdBeginRenderPass(commandBuffer.ToVulkanCommandBuffer(), ref renderPassBeginInfo, SubpassContents.Inline);
+        // TODO: Implement pipeline layout
+        PipelineLayoutCreateInfo pipelineLayout = new()
+        {
+            SType = StructureType.PipelineLayoutCreateInfo,
+            SetLayoutCount = (uint)desc.SetLayoutCount,
+            PSetLayouts = null,
+            PushConstantRangeCount = (uint)desc.PushConstantRangeCount,
+            PPushConstantRanges = null
+        };
+
+        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out var layout);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
+
+        return new VulkanGraphicsPipelineLayoutWrapper(layout);
     }
 
-    public override void EndRenderPass(ICommandBuffer commandBuffer)
+    public override unsafe void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts)
     {
-        _vk.CmdEndRenderPass(commandBuffer.ToVulkanCommandBuffer());
+        foreach (var layout in layouts)
+        {
+            _vk.DestroyPipelineLayout(_device, layout.ToVulkanGraphicsPipelineLayout(), null);
+        }
     }
 
-    public override unsafe GraphicsPipeline CreateGraphicsPipeline(GraphicsPipelineLayout layout)
+    public override unsafe GraphicsPipeline CreateGraphicsPipeline(GraphicsPipelineDesc desc, GraphicsPipelineLayout layout)
     {
         var shaderStages = new List<PipelineShaderStageCreateInfo>();
-        foreach (var shader in layout.Shaders)
+        foreach (var shader in desc.Shaders)
         {
             if (shader != null)
             {
@@ -1226,18 +1241,18 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             }
         }
 
-        var vertexInputState = layout.VertexInputState.ToVulkanVertexInputState();
-        var inputAssemblyState = layout.InputAssemblyState.ToVulkanInputAssemblyState();
-        var rasterizationState = layout.RasterizationState.ToVulkanRasterizationState();
-        var multisampleState = layout.MultisampleState.ToVulkanMultisampleState();
-        var depthStencilState = layout.DepthStencilState?.ToVulkanDepthStencilState();
+        var vertexInputState = desc.VertexInputState.ToVulkanVertexInputState();
+        var inputAssemblyState = desc.InputAssemblyState.ToVulkanInputAssemblyState();
+        var rasterizationState = desc.RasterizationState.ToVulkanRasterizationState();
+        var multisampleState = desc.MultisampleState.ToVulkanMultisampleState();
+        var depthStencilState = desc.DepthStencilState?.ToVulkanDepthStencilState();
 
-        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[layout.ColorBlendAttachmentStateCount];
-        for (int i = 0; i < layout.ColorBlendAttachmentStateCount; i++)
+        var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[desc.ColorBlendAttachmentStates.Count];
+        for (int i = 0; i < desc.ColorBlendAttachmentStates.Count; i++)
         {
-            vulkanColorBlendAttachmentStates[i] = layout.ColorBlendAttachmentStates[i].ToVulkanColorBlendAttachmentState();
+            vulkanColorBlendAttachmentStates[i] = desc.ColorBlendAttachmentStates[i].ToVulkanColorBlendAttachmentState();
         }
-        var colorBlendState = layout.ColorBlendState.ToVulkanColorBlendState(vulkanColorBlendAttachmentStates);
+        var colorBlendState = desc.ColorBlendState.ToVulkanColorBlendState(vulkanColorBlendAttachmentStates);
 
         // https://docs.vulkan.org/guide/latest/dynamic_state.html
         PipelineViewportStateCreateInfo viewportState = new()
@@ -1260,19 +1275,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             DynamicStateCount = 2,
             PDynamicStates = dynamicStates
         };
-
-        // TODO: structure to pass variables to shaders
-        PipelineLayoutCreateInfo pipelineLayout = new()
-        {
-            SType = StructureType.PipelineLayoutCreateInfo,
-            SetLayoutCount = 0,
-            PSetLayouts = null,
-            PushConstantRangeCount = 0,
-            PPushConstantRanges = null
-        };
-
-        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout /* TODO: fix */);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
 
         GraphicsPipelineCreateInfo pipelineInfo;
         fixed (PipelineShaderStageCreateInfo* shaderStagesPtr = shaderStages.ToArray())
@@ -1302,7 +1304,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                     PDepthStencilState = (PipelineDepthStencilStateCreateInfo*)&depthStencilState,
                     PColorBlendState = &colorBlendState,
                     PDynamicState = &dynamicState,
-                    Layout = _pipelineLayout,
+                    Layout = layout.ToVulkanGraphicsPipelineLayout(),
                     RenderPass = default,
                     Subpass = 0,
                     BasePipelineHandle = default,
@@ -1311,10 +1313,18 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             }
         }
 
-        result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pso);
+        var result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pso);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
 
         return new VulkanGraphicsPipelineWrapper(pso);
+    }
+
+    public override unsafe void DestroyGraphicsPipelines(GraphicsPipeline[] pipelines)
+    {
+        foreach (var pipeline in pipelines)
+        {
+            _vk.DestroyPipeline(_device, pipeline.ToVulkanGraphicsPipeline(), null);
+        }
     }
 
     public override void BindGraphicsPipeline(ICommandBuffer commandBuffer, GraphicsPipeline graphicsPipeline)

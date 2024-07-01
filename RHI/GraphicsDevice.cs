@@ -58,12 +58,11 @@ public abstract class GraphicsDevice(IView view)
     public abstract void Draw(ICommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance);
     public abstract void DrawIndexed(ICommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance);
 
-    // TODO: Add render pass abstraction
-    public abstract void BeginRenderPass(ICommandBuffer commandBuffer);
-    public abstract void EndRenderPass(ICommandBuffer commandBuffer);
+    public abstract GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc);
+    public abstract void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts);
 
-    // TODO: Add graphics pipeline abstraction
-    public abstract GraphicsPipeline CreateGraphicsPipeline(GraphicsPipelineLayout layout);
+    public abstract GraphicsPipeline CreateGraphicsPipeline(GraphicsPipelineDesc desc, GraphicsPipelineLayout layout);
+    public abstract void DestroyGraphicsPipelines(GraphicsPipeline[] pipelines);
     public abstract void BindGraphicsPipeline(ICommandBuffer commandBuffer, GraphicsPipeline pipeline);
 
     public abstract Shader CreateShader(string path, Shader.Stage stage);
