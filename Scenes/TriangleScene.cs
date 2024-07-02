@@ -1,4 +1,3 @@
-using System;
 using YASV.RHI;
 
 namespace YASV.Scenes;
