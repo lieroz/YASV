@@ -89,9 +89,7 @@ public class TriangleScene : BaseScene
             {
                 _graphicsDevice.BindGraphicsPipeline(commandBuffer, _triangleGraphicsPipeline);
 
-                // TODO: fix extent
-                _graphicsDevice.SetViewport(commandBuffer, 0, 0, 0, 0);
-                _graphicsDevice.SetScissor(commandBuffer, 0, 0, 0, 0);
+                _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
                 _graphicsDevice.Draw(commandBuffer, 3, 1, 0, 0);
             }
 

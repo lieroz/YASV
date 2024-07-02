@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Runtime.InteropServices;
+using Avalonia.Platform;
 using Silk.NET.Core;
 using Silk.NET.Core.Native;
 using Silk.NET.SDL;
@@ -892,33 +893,37 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(result != Result.Success, $"vkEndCommandBuffer failed: {result}.");
     }
 
-    public override void SetViewport(ICommandBuffer commandBuffer, int x, int y, int width, int height, float minDepth, float maxDepth)
+    public override void SetDefaultViewportAndScissor(ICommandBuffer commandBuffer)
     {
-        var viewport = new Viewport()
+        var viewport = new Silk.NET.Vulkan.Viewport()
         {
-            X = x,
-            Y = y,
+            X = 0,
+            Y = 0,
             Width = _swapchainExtent.Width,
-            // Width = width,
             Height = _swapchainExtent.Height,
-            // Height = height,
-            MinDepth = minDepth,
-            MaxDepth = maxDepth
+            MinDepth = 0.0f,
+            MaxDepth = 1.0f
         };
-        // TODO: Allow setting multiple viewports in one command
         _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref viewport);
-    }
 
-    public override void SetScissor(ICommandBuffer commandBuffer, int x, int y, int width, int height)
-    {
-        var scissor = new Rect2D()
+        var scissor = new Silk.NET.Vulkan.Rect2D()
         {
-            Offset = new(x, y),
-            // Extent = new Extent2D((uint)width, (uint)height)
+            Offset = new(0, 0),
             Extent = _swapchainExtent
         };
-        // TODO: Allow setting multiple scissors in one command
         _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);
+    }
+
+    public override void SetViewports(ICommandBuffer commandBuffer, int firstViewport, Viewport[] viewports)
+    {
+        var vkViewports = viewports.Select(v => new Silk.NET.Vulkan.Viewport(v.X, v.Y, v.Width, v.Height, v.MinDepth, v.MaxDepth)).ToArray();
+        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), (uint)firstViewport, (uint)viewports.Length, vkViewports);
+    }
+
+    public override void SetScissors(ICommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors)
+    {
+        var vkScissors = scissors.Select(v => new Silk.NET.Vulkan.Rect2D(new(v.X, v.Y), new((uint)v.Width, (uint)v.Height))).ToArray();
+        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), (uint)firstScissor, (uint)scissors.Length, vkScissors);
     }
 
     public override void Draw(ICommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)

@@ -61,8 +61,9 @@ public abstract class GraphicsDevice(IView view)
     public abstract void BeginCommandBuffer(ICommandBuffer commandBuffer);
     public abstract void EndCommandBuffer(ICommandBuffer commandBuffer);
 
-    public abstract void SetViewport(ICommandBuffer commandBuffer, int x, int y, int width, int height, float minDepth = 0.0f, float maxDepth = 1.0f);
-    public abstract void SetScissor(ICommandBuffer commandBuffer, int x, int y, int width, int height);
+    public abstract void SetDefaultViewportAndScissor(ICommandBuffer commandBuffer);
+    public abstract void SetViewports(ICommandBuffer commandBuffer, int firstViewport, Viewport[] viewports);
+    public abstract void SetScissors(ICommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors);
     public abstract void Draw(ICommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance);
     public abstract void DrawIndexed(ICommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance);
 
