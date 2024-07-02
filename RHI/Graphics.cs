@@ -133,6 +133,20 @@ public enum LogicOp
     Set
 }
 
+public enum ImageLayout
+{
+    Undefined,
+    General,
+    ColorAttachmentOptimal,
+    DepthStencilAttachmentOptimal,
+    DepthStencilReadOnlyOptimal,
+    ShaderReadOnlyOptimal,
+    TransferSrcOptimal,
+    TransferDstOptimal,
+    Preinitialized,
+    Present
+}
+
 public static class Constants
 {
     public const int MaxFramesInFlight = 2;

@@ -24,6 +24,7 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
     }
 }
 
+// TODO: rearrange
 public class VulkanDevice(IView view) : GraphicsDevice(view)
 {
     private readonly ShaderCompiler _shaderCompiler = new DxcShaderCompiler();
@@ -67,14 +68,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
-    private PipelineLayout _pipelineLayout;
-    private Pipeline _graphicsPipeline;
     private CommandPool _commandPool;
-    private CommandBuffer[]? _commandBuffers;
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
-    private uint _currentFrame = 0;
 
     public override unsafe void Create(Sdl sdlApi)
     {
@@ -87,18 +84,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateLogicalDevice();
         CreateSwapchain(_view);
         CreateImageViews();
-        CreateGraphicsPipeline();
         CreateCommandPool();
-        CreateCommandBuffers();
         CreateSyncObjects();
     }
 
     public override unsafe void Destroy()
     {
         DestroySyncObjects();
-        FreeCommandBuffers();
         DestroyCommandPool();
-        DestroyGraphicsPipeline();
 
         CleanupSwapchain();
 
@@ -132,31 +125,32 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateImageViews();
     }
 
-    public override unsafe void DrawFrame()
+    public override unsafe int BeginFrame(int currentFrame)
     {
-        _vk.WaitForFences(_device, 1, ref _inFlightFences![_currentFrame], true, uint.MaxValue);
+        var frameIndex = currentFrame % Constants.MaxFramesInFlight;
+        _vk.WaitForFences(_device, 1, ref _inFlightFences![frameIndex], true, uint.MaxValue);
 
         uint imageIndex = 0;
-        var result = _khrSwapchain!.AcquireNextImage(_device, _swapchain, uint.MaxValue, _imageAvailableSemaphores![_currentFrame], default, &imageIndex);
+        var result = _khrSwapchain!.AcquireNextImage(_device, _swapchain, uint.MaxValue, _imageAvailableSemaphores![frameIndex], default, &imageIndex);
         if (result == Result.ErrorOutOfDateKhr)
         {
             RecreateSwapchain();
-            return;
+            return -1;
         }
 
         VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
 
-        _vk.ResetFences(_device, 1, ref _inFlightFences![_currentFrame]);
+        _vk.ResetFences(_device, 1, ref _inFlightFences![frameIndex]);
+        return (int)imageIndex;
+    }
 
-        result = _vk.ResetCommandBuffer(_commandBuffers![_currentFrame], CommandBufferResetFlags.None);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't reset command buffer: {result}.");
-
-        RecordCommandBuffer(_commandBuffers[_currentFrame], imageIndex);
-
-        var waitSemaphores = stackalloc[] { _imageAvailableSemaphores![_currentFrame] };
+    public override unsafe void EndFrame(ICommandBuffer commandBuffer, int currentFrame, int imageIndex)
+    {
+        var frameIndex = currentFrame % Constants.MaxFramesInFlight;
+        var waitSemaphores = stackalloc[] { _imageAvailableSemaphores![frameIndex] };
         var waitStages = stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit };
-        var buffer = _commandBuffers[_currentFrame];
-        var signalSemaphores = stackalloc[] { _renderFinishedSemaphores![_currentFrame] };
+        var buffer = commandBuffer.ToVulkanCommandBuffer();
+        var signalSemaphores = stackalloc[] { _renderFinishedSemaphores![frameIndex] };
 
         SubmitInfo submitInfo = new()
         {
@@ -170,7 +164,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PSignalSemaphores = signalSemaphores
         };
 
-        result = _vk.QueueSubmit(_graphicsQueue, 1, ref submitInfo, _inFlightFences[_currentFrame]);
+        var result = _vk.QueueSubmit(_graphicsQueue, 1, ref submitInfo, _inFlightFences![frameIndex]);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
 
         var swapchains = stackalloc[] { _swapchain };
@@ -182,10 +176,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PWaitSemaphores = signalSemaphores,
             SwapchainCount = 1,
             PSwapchains = swapchains,
-            PImageIndices = &imageIndex,
+            PImageIndices = (uint*)&imageIndex,
         };
 
-        result = _khrSwapchain.QueuePresent(_graphicsQueue, ref presentInfo);
+        result = _khrSwapchain!.QueuePresent(_graphicsQueue, ref presentInfo);
         if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
         {
             RecreateSwapchain();
@@ -193,8 +187,63 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
 
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't present image: {result}.");
+    }
 
-        _currentFrame = (_currentFrame + 1) % Constants.MaxFramesInFlight;
+    public override unsafe void ImageBarrier(ICommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout)
+    {
+        ImageMemoryBarrier barrier = new()
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            OldLayout = oldLayout.ToVulkanImageLayout(),
+            NewLayout = newLayout.ToVulkanImageLayout(),
+            Image = _swapchainImages![imageIndex], // TODO: pass texture when implemented
+            SubresourceRange = new()
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _vk.CmdPipelineBarrier(commandBuffer.ToVulkanCommandBuffer(), PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
+    }
+
+    public override unsafe void BeginRendering(ICommandBuffer commandBuffer, int imageIndex)
+    {
+        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
+
+        RenderingAttachmentInfo colorAttachmentInfo = new()
+        {
+            SType = StructureType.RenderingAttachmentInfoKhr,
+            ImageView = _swapchainImageViews![imageIndex],
+            ImageLayout = Silk.NET.Vulkan.ImageLayout.AttachmentOptimalKhr,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            ClearValue = clearColor
+        };
+
+        RenderingInfo renderingInfo = new()
+        {
+            SType = StructureType.RenderingInfoKhr,
+            RenderArea = new()
+            {
+                Offset = new(0, 0),
+                Extent = _swapchainExtent
+            },
+            LayerCount = 1,
+            ColorAttachmentCount = 1,
+            PColorAttachments = &colorAttachmentInfo
+        };
+
+        _vk.CmdBeginRendering(commandBuffer.ToVulkanCommandBuffer(), ref renderingInfo);
+    }
+
+    public override void EndRendering(ICommandBuffer commandBuffer)
+    {
+        _vk.CmdEndRendering(commandBuffer.ToVulkanCommandBuffer());
     }
 
     #region Instance
@@ -736,201 +785,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     #endregion
 
-    #region Graphics Pipeline State
-
-    private unsafe ShaderModule CreateShaderModule(byte[] code)
-    {
-        fixed (byte* codePtr = code)
-        {
-            ShaderModuleCreateInfo shaderModuleCreateInfo = new()
-            {
-                SType = StructureType.ShaderModuleCreateInfo,
-                CodeSize = (uint)code.Length,
-                PCode = (uint*)codePtr,
-            };
-
-            var result = _vk.CreateShaderModule(_device, ref shaderModuleCreateInfo, null, out var shaderModule);
-            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
-
-            return shaderModule;
-        }
-    }
-
-    private unsafe void CreateGraphicsPipeline()
-    {
-        var vertShaderCode = _shaderCompiler.Compile("Shaders/triangle.vert.hlsl", Shader.Stage.Vertex, true);
-        var fragShaderCode = _shaderCompiler.Compile("Shaders/triangle.frag.hlsl", Shader.Stage.Fragment, true);
-
-        var vertShaderModule = CreateShaderModule(vertShaderCode);
-        var fragShaderModule = CreateShaderModule(fragShaderCode);
-
-        PipelineShaderStageCreateInfo vertShaderStage = new()
-        {
-            SType = StructureType.PipelineShaderStageCreateInfo,
-            Stage = ShaderStageFlags.VertexBit,
-            Module = vertShaderModule,
-            PName = (byte*)SilkMarshal.StringToPtr("main"),
-        };
-
-        PipelineShaderStageCreateInfo fragShaderStage = new()
-        {
-            SType = StructureType.PipelineShaderStageCreateInfo,
-            Stage = ShaderStageFlags.FragmentBit,
-            Module = fragShaderModule,
-            PName = (byte*)SilkMarshal.StringToPtr("main"),
-        };
-
-        var shaderStages = stackalloc[] { vertShaderStage, fragShaderStage };
-
-        PipelineVertexInputStateCreateInfo vertexInputState = new()
-        {
-            SType = StructureType.PipelineVertexInputStateCreateInfo,
-        };
-
-        PipelineInputAssemblyStateCreateInfo inputAssemblyState = new()
-        {
-            SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-            Topology = Silk.NET.Vulkan.PrimitiveTopology.TriangleList,
-            PrimitiveRestartEnable = false
-        };
-
-        PipelineViewportStateCreateInfo viewportState = new()
-        {
-            SType = StructureType.PipelineViewportStateCreateInfo,
-            ViewportCount = 1,
-            PViewports = null,
-            ScissorCount = 1,
-            PScissors = null
-        };
-
-        PipelineRasterizationStateCreateInfo rasterizationState = new()
-        {
-            SType = StructureType.PipelineRasterizationStateCreateInfo,
-            DepthClampEnable = false,
-            RasterizerDiscardEnable = false,
-            PolygonMode = Silk.NET.Vulkan.PolygonMode.Fill,
-            LineWidth = 1f,
-            CullMode = Silk.NET.Vulkan.CullModeFlags.BackBit,
-            FrontFace = Silk.NET.Vulkan.FrontFace.Clockwise,
-            DepthBiasEnable = false,
-            DepthBiasConstantFactor = 0f,
-            DepthBiasClamp = 0f,
-            DepthBiasSlopeFactor = 0f
-        };
-
-        PipelineMultisampleStateCreateInfo multisampleState = new()
-        {
-            SType = StructureType.PipelineMultisampleStateCreateInfo,
-            SampleShadingEnable = false,
-            RasterizationSamples = Silk.NET.Vulkan.SampleCountFlags.Count1Bit,
-            MinSampleShading = 1f,
-            PSampleMask = null,
-            AlphaToCoverageEnable = false,
-            AlphaToOneEnable = false
-        };
-
-        PipelineColorBlendAttachmentState colorBlendAttachmentState = new()
-        {
-            ColorWriteMask = Silk.NET.Vulkan.ColorComponentFlags.RBit
-                           | Silk.NET.Vulkan.ColorComponentFlags.GBit
-                           | Silk.NET.Vulkan.ColorComponentFlags.BBit
-                           | Silk.NET.Vulkan.ColorComponentFlags.ABit,
-            BlendEnable = false,
-            SrcColorBlendFactor = Silk.NET.Vulkan.BlendFactor.One,
-            DstColorBlendFactor = Silk.NET.Vulkan.BlendFactor.Zero,
-            ColorBlendOp = Silk.NET.Vulkan.BlendOp.Add,
-            SrcAlphaBlendFactor = Silk.NET.Vulkan.BlendFactor.One,
-            DstAlphaBlendFactor = Silk.NET.Vulkan.BlendFactor.Zero,
-            AlphaBlendOp = Silk.NET.Vulkan.BlendOp.Add
-        };
-
-        PipelineColorBlendStateCreateInfo colorBlendState = new()
-        {
-            SType = StructureType.PipelineColorBlendStateCreateInfo,
-            LogicOpEnable = false,
-            LogicOp = Silk.NET.Vulkan.LogicOp.Copy,
-            AttachmentCount = 1,
-            PAttachments = &colorBlendAttachmentState
-        };
-
-        colorBlendState.BlendConstants[0] = 0f;
-        colorBlendState.BlendConstants[1] = 0f;
-        colorBlendState.BlendConstants[2] = 0f;
-        colorBlendState.BlendConstants[3] = 0f;
-
-        var dynamicStates = stackalloc[]
-        {
-            DynamicState.Viewport,
-            DynamicState.Scissor
-        };
-        PipelineDynamicStateCreateInfo dynamicState = new()
-        {
-            SType = StructureType.PipelineDynamicStateCreateInfo,
-            DynamicStateCount = 2,
-            PDynamicStates = dynamicStates
-        };
-
-        PipelineLayoutCreateInfo pipelineLayout = new()
-        {
-            SType = StructureType.PipelineLayoutCreateInfo,
-            SetLayoutCount = 0,
-            PSetLayouts = null,
-            PushConstantRangeCount = 0,
-            PPushConstantRanges = null
-        };
-
-        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out _pipelineLayout);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
-
-        fixed (Format* formatPtr = &_swapchainImageFormat)
-        {
-            PipelineRenderingCreateInfo pipelineRenderingCreateInfo = new()
-            {
-                SType = StructureType.PipelineRenderingCreateInfo,
-                ColorAttachmentCount = 1,
-                PColorAttachmentFormats = formatPtr
-            };
-
-            GraphicsPipelineCreateInfo pipelineInfo = new()
-            {
-                SType = StructureType.GraphicsPipelineCreateInfo,
-                PNext = &pipelineRenderingCreateInfo,
-                StageCount = 2,
-                PStages = shaderStages,
-                PVertexInputState = &vertexInputState,
-                PInputAssemblyState = &inputAssemblyState,
-                PViewportState = &viewportState,
-                PRasterizationState = &rasterizationState,
-                PMultisampleState = &multisampleState,
-                PDepthStencilState = null,
-                PColorBlendState = &colorBlendState,
-                PDynamicState = &dynamicState,
-                Layout = _pipelineLayout,
-                RenderPass = default,
-                Subpass = 0,
-                BasePipelineHandle = default,
-                BasePipelineIndex = -1
-            };
-
-            result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out _graphicsPipeline);
-            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
-        }
-
-        SilkMarshal.Free((nint)vertShaderStage.PName);
-        SilkMarshal.Free((nint)fragShaderStage.PName);
-
-        _vk.DestroyShaderModule(_device, vertShaderModule, null);
-        _vk.DestroyShaderModule(_device, fragShaderModule, null);
-    }
-
-    private unsafe void DestroyGraphicsPipeline()
-    {
-        _vk.DestroyPipeline(_device, _graphicsPipeline, null);
-        _vk.DestroyPipelineLayout(_device, _pipelineLayout, null);
-    }
-
-    #endregion
-
     #region Command Pool
 
     private unsafe void CreateCommandPool()
@@ -949,129 +803,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     }
 
     private unsafe void DestroyCommandPool() => _vk.DestroyCommandPool(_device, _commandPool, null);
-
-    private unsafe void CreateCommandBuffers()
-    {
-        _commandBuffers = new CommandBuffer[Constants.MaxFramesInFlight];
-
-        CommandBufferAllocateInfo allocateInfo = new()
-        {
-            SType = StructureType.CommandBufferAllocateInfo,
-            CommandPool = _commandPool,
-            Level = CommandBufferLevel.Primary,
-            CommandBufferCount = Constants.MaxFramesInFlight
-        };
-
-        var result = _vk.AllocateCommandBuffers(_device, &allocateInfo, _commandBuffers);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't allocate command buffers: {result}.");
-    }
-
-    private unsafe void FreeCommandBuffers() => _vk.FreeCommandBuffers(_device, _commandPool, _commandBuffers);
-
-    private unsafe void RecordCommandBuffer(CommandBuffer commandBuffer, uint imageIndex)
-    {
-        CommandBufferBeginInfo beginInfo = new()
-        {
-            SType = StructureType.CommandBufferBeginInfo,
-            Flags = CommandBufferUsageFlags.None,
-            PInheritanceInfo = null
-        };
-
-        var result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't begin command buffer: {result}.");
-
-        ImageMemoryBarrier barrier = new()
-        {
-            SType = StructureType.ImageMemoryBarrier,
-            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
-            OldLayout = ImageLayout.Undefined,
-            NewLayout = ImageLayout.ColorAttachmentOptimal,
-            Image = _swapchainImages![imageIndex],
-            SubresourceRange = new()
-            {
-                AspectMask = ImageAspectFlags.ColorBit,
-                BaseMipLevel = 0,
-                LevelCount = 1,
-                BaseArrayLayer = 0,
-                LayerCount = 1
-            }
-        };
-
-        _vk.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
-
-        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
-
-        RenderingAttachmentInfo colorAttachmentInfo = new()
-        {
-            SType = StructureType.RenderingAttachmentInfoKhr,
-            ImageView = _swapchainImageViews![imageIndex],
-            ImageLayout = ImageLayout.AttachmentOptimalKhr,
-            LoadOp = AttachmentLoadOp.Clear,
-            StoreOp = AttachmentStoreOp.Store,
-            ClearValue = clearColor
-        };
-
-        RenderingInfo renderingInfo = new()
-        {
-            SType = StructureType.RenderingInfoKhr,
-            RenderArea = new()
-            {
-                Offset = new(0, 0),
-                Extent = _swapchainExtent
-            },
-            LayerCount = 1,
-            ColorAttachmentCount = 1,
-            PColorAttachments = &colorAttachmentInfo
-        };
-
-        _vk.CmdBeginRendering(commandBuffer, ref renderingInfo);
-
-        _vk.CmdBindPipeline(commandBuffer, PipelineBindPoint.Graphics, _graphicsPipeline);
-
-        Viewport viewport = new()
-        {
-            X = 0f,
-            Y = 0f,
-            Width = _swapchainExtent.Width,
-            Height = _swapchainExtent.Height,
-            MinDepth = 0f,
-            MaxDepth = 1f
-        };
-        _vk.CmdSetViewport(commandBuffer, 0, 1, ref viewport);
-
-        Rect2D scissor = new()
-        {
-            Offset = new(0, 0),
-            Extent = _swapchainExtent
-        };
-        _vk.CmdSetScissor(commandBuffer, 0, 1, ref scissor);
-
-        _vk.CmdDraw(commandBuffer, 3, 1, 0, 0);
-
-        _vk.CmdEndRendering(commandBuffer);
-
-        barrier = new()
-        {
-            SType = StructureType.ImageMemoryBarrier,
-            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
-            OldLayout = ImageLayout.ColorAttachmentOptimal,
-            NewLayout = ImageLayout.PresentSrcKhr,
-            Image = _swapchainImages![imageIndex],
-            SubresourceRange = new()
-            {
-                AspectMask = ImageAspectFlags.ColorBit,
-                BaseMipLevel = 0,
-                LevelCount = 1,
-                BaseArrayLayer = 0,
-                LayerCount = 1
-            }
-        };
-
-        _vk.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
-
-        result = _vk.EndCommandBuffer(commandBuffer);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't end command buffer: {result}.");
-    }
 
     #endregion
 
@@ -1167,8 +898,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         {
             X = x,
             Y = y,
-            Width = width,
-            Height = height,
+            Width = _swapchainExtent.Width,
+            // Width = width,
+            Height = _swapchainExtent.Height,
+            // Height = height,
             MinDepth = minDepth,
             MaxDepth = maxDepth
         };
@@ -1181,7 +914,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var scissor = new Rect2D()
         {
             Offset = new(x, y),
-            Extent = new Extent2D((uint)width, (uint)height)
+            // Extent = new Extent2D((uint)width, (uint)height)
+            Extent = _swapchainExtent
         };
         // TODO: Allow setting multiple scissors in one command
         _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);

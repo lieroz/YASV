@@ -8,8 +8,11 @@ public interface ICommandBuffer { }
 
 public interface ITexture { }
 
+// TODO: rearrange
 public abstract class GraphicsDevice(IView view)
 {
+    private const int PreallocatedBuffersCount = 3;
+
     protected readonly IView _view = view;
 
     public abstract void Create(Sdl sdlApi);
@@ -18,11 +21,16 @@ public abstract class GraphicsDevice(IView view)
 
     public abstract void WaitIdle();
 
-    public abstract void DrawFrame();
+    public abstract int BeginFrame(int currentFrame);
+    public abstract void EndFrame(ICommandBuffer commandBuffer, int currentFrame, int imageIndex);
 
-    private const int PreallocatedBuffersCount = 3;
+    // TODO: generalize this, add more options
+    public abstract void ImageBarrier(ICommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout);
 
-    private ConcurrentBag<ICommandBuffer>[] _commandBuffers = new ConcurrentBag<ICommandBuffer>[Constants.MaxFramesInFlight];
+    public abstract void BeginRendering(ICommandBuffer commandBuffer, int imageIndex);
+    public abstract void EndRendering(ICommandBuffer commandBuffer);
+
+    private readonly ConcurrentBag<ICommandBuffer>[] _commandBuffers = [[], []];
 
     public ICommandBuffer GetCommandBuffer(int frameNumber)
     {

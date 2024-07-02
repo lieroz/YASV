@@ -35,5 +35,10 @@ public abstract class BaseScene(GraphicsDevice graphicsDevice) : IDisposable
         }
     }
 
-    public abstract void Draw();
+    public void DrawScene()
+    {
+        Draw();
+    }
+
+    protected abstract void Draw();
 }

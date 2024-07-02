@@ -32,6 +32,9 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         if (!_disposed)
         {
             _sdlActions.Enqueue(_window!.Close);
+            _sdlThread!.Join();
+
+            _graphicsDevice!.WaitIdle();
 
             if (disposing)
             {
@@ -39,9 +42,10 @@ public class SilkNETWindow : NativeControlHost, IDisposable
                 CurrentScene?.Dispose();
             }
 
+            _graphicsDevice.Destroy();
+
             // free unmanaged resources (unmanaged objects) and override finalizer
             // set large fields to null
-            _sdlThread!.Join();
             _window.Dispose();
             _disposed = true;
         }
@@ -62,18 +66,16 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         {
             _window.Run(() =>
             {
-                while (_sdlActions.TryDequeue(out var action) && !_window.IsClosing)
+                if (_window.IsClosing)
+                {
+                    return;
+                }
+                while (_sdlActions.TryDequeue(out var action))
                 {
                     action();
                 }
-                if (CurrentScene != null)
-                {
-                    CurrentScene.Draw();
-                    _graphicsDevice.DrawFrame(); // TODO: move to Draw in each Scene
-                }
+                CurrentScene?.DrawScene();
             });
-            _graphicsDevice.WaitIdle();
-            _graphicsDevice.Destroy();
         })
         {
             Name = "SDLThread"
