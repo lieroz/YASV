@@ -79,32 +79,26 @@ public class TriangleScene : BaseScene
         };
     }
 
-    protected override void Draw()
+    protected override void Draw(ICommandBuffer commandBuffer, int imageIndex)
     {
-        var imageIndex = _graphicsDevice.BeginFrame(_currentFrame);
-        var commandBuffer = _graphicsDevice.GetCommandBuffer(_currentFrame);
+        _graphicsDevice.BeginCommandBuffer(commandBuffer);
         {
-            _graphicsDevice.BeginCommandBuffer(commandBuffer);
+            _graphicsDevice.ImageBarrier(commandBuffer, imageIndex, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
+
+            _graphicsDevice.BeginRendering(commandBuffer, imageIndex);
             {
-                _graphicsDevice.ImageBarrier(commandBuffer, imageIndex, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
-
-                _graphicsDevice.BeginRendering(commandBuffer, imageIndex);
-
                 _graphicsDevice.BindGraphicsPipeline(commandBuffer, _triangleGraphicsPipeline);
 
                 // TODO: fix extent
                 _graphicsDevice.SetViewport(commandBuffer, 0, 0, 0, 0);
                 _graphicsDevice.SetScissor(commandBuffer, 0, 0, 0, 0);
                 _graphicsDevice.Draw(commandBuffer, 3, 1, 0, 0);
-
-                _graphicsDevice.EndRendering(commandBuffer);
-
-                _graphicsDevice.ImageBarrier(commandBuffer, imageIndex, ImageLayout.ColorAttachmentOptimal, ImageLayout.Present);
             }
-            _graphicsDevice.EndCommandBuffer(commandBuffer);
-        }
-        _graphicsDevice.EndFrame(commandBuffer, _currentFrame, imageIndex);
 
-        _currentFrame++;
+            _graphicsDevice.EndRendering(commandBuffer);
+
+            _graphicsDevice.ImageBarrier(commandBuffer, imageIndex, ImageLayout.ColorAttachmentOptimal, ImageLayout.Present);
+        }
+        _graphicsDevice.EndCommandBuffer(commandBuffer);
     }
 }
