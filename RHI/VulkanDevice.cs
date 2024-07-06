@@ -69,7 +69,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
-    private CommandPool _commandPool;
+    private CommandPool[] _commandPools = new CommandPool[Constants.MaxFramesInFlight];
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
@@ -792,18 +792,21 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
 
-        CommandPoolCreateInfo commandPoolInfo = new()
+        for (int i = 0; i < Constants.MaxFramesInFlight; i++)
         {
-            SType = StructureType.CommandPoolCreateInfo,
-            Flags = CommandPoolCreateFlags.ResetCommandBufferBit,
-            QueueFamilyIndex = (uint)queueFamilyIndices.Graphics!,
-        };
+            CommandPoolCreateInfo commandPoolInfo = new()
+            {
+                SType = StructureType.CommandPoolCreateInfo,
+                Flags = CommandPoolCreateFlags.ResetCommandBufferBit,
+                QueueFamilyIndex = (uint)queueFamilyIndices.Graphics!,
+            };
 
-        var result = _vk.CreateCommandPool(_device, ref commandPoolInfo, null, out _commandPool);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create command pool: {result}.");
+            var result = _vk.CreateCommandPool(_device, ref commandPoolInfo, null, out _commandPools[i]);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create command pool: {result}.");
+        }
     }
 
-    private unsafe void DestroyCommandPool() => _vk.DestroyCommandPool(_device, _commandPool, null);
+    private unsafe void DestroyCommandPool() => _commandPools.All(x => { _vk.DestroyCommandPool(_device, x, null); return true; });
 
     #endregion
 
@@ -851,13 +854,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     #endregion
 
-    protected override unsafe ICommandBuffer[] AllocateCommandBuffers(int count)
+    protected override unsafe ICommandBuffer[] AllocateCommandBuffers(int index, int count)
     {
         var commandBuffers = new CommandBuffer[count];
         var allocateInfo = new CommandBufferAllocateInfo()
         {
             SType = StructureType.CommandBufferAllocateInfo,
-            CommandPool = _commandPool,
+            CommandPool = _commandPools[index],
             Level = CommandBufferLevel.Primary,
             CommandBufferCount = (uint)count
         };
@@ -868,11 +871,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return commandBuffers.Select(x => new VulkanCommandBufferWrapper(x)).ToArray();
     }
 
-    protected override void ResetCommandBuffer(ICommandBuffer commandBuffer)
+    protected override void ResetCommandBuffers(int index)
     {
-        var vulkanCommandBuffer = commandBuffer.ToVulkanCommandBuffer();
-        var result = _vk.ResetCommandBuffer(vulkanCommandBuffer, CommandBufferResetFlags.None);
-        VulkanException.ThrowsIf(result != Result.Success, $"vkResetCommandBuffer failed: {result}.");
+        var result = _vk.ResetCommandPool(_device, _commandPools[index], CommandPoolResetFlags.ReleaseResourcesBit);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkResetCommandPool failed: {result}.");
     }
 
     public override void BeginCommandBuffer(ICommandBuffer commandBuffer)

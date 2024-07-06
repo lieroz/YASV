@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
@@ -37,16 +38,13 @@ public abstract class GraphicsDevice(IView view)
         int index = frameNumber % Constants.MaxFramesInFlight;
         var bag = _commandBuffers[index];
 
-        foreach (var buffer in bag)
-        {
-            ResetCommandBuffer(buffer);
-        }
+        ResetCommandBuffers(index);
 
         ICommandBuffer? commandBuffer;
 
         while (!bag.TryTake(out commandBuffer))
         {
-            foreach (var buffer in AllocateCommandBuffers(PreallocatedBuffersCount))
+            foreach (var buffer in AllocateCommandBuffers(index, PreallocatedBuffersCount))
             {
                 bag.Add(buffer);
             }
@@ -55,8 +53,8 @@ public abstract class GraphicsDevice(IView view)
         return commandBuffer;
     }
 
-    protected abstract ICommandBuffer[] AllocateCommandBuffers(int count);
-    protected abstract void ResetCommandBuffer(ICommandBuffer commandBuffer);
+    protected abstract ICommandBuffer[] AllocateCommandBuffers(int index, int count);
+    protected abstract void ResetCommandBuffers(int index);
 
     public abstract void BeginCommandBuffer(ICommandBuffer commandBuffer);
     public abstract void EndCommandBuffer(ICommandBuffer commandBuffer);
