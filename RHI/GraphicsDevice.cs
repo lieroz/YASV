@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
@@ -6,8 +5,6 @@ using Silk.NET.Windowing;
 namespace YASV.RHI;
 
 public interface ICommandBuffer { }
-
-public interface ITexture { }
 
 // TODO: rearrange
 public abstract class GraphicsDevice(IView view)
@@ -74,4 +71,10 @@ public abstract class GraphicsDevice(IView view)
 
     public abstract Shader CreateShader(string path, ShaderStage stage);
     public abstract unsafe void DestroyShaders(Shader[] shaders);
+
+    public abstract Buffer CreateBuffer(BufferDesc desc);
+    public abstract void DestroyBuffer(Buffer buffer);
+    public abstract void CopyToBuffer(Buffer buffer, byte[] data);
+    // TODO: Add offsets
+    public abstract void BindVertexBuffers(ICommandBuffer commandBuffer, Buffer[] buffers);
 }

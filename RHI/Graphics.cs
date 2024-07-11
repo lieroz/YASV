@@ -1,5 +1,19 @@
 namespace YASV.RHI;
 
+public enum VertexInputRate
+{
+    Vertex,
+    Instance
+}
+
+// TODO: add more formats
+public enum Format
+{
+    Undefined,
+    R32G32_Sfloat,
+    R32G32B32_Sfloat
+}
+
 public enum PrimitiveTopology
 {
     PointList,
@@ -153,6 +167,26 @@ public enum ShaderStage
     Pixel,
     Compute,
     Count
+}
+
+public enum BufferUsage
+{
+    None,
+    TransferSrc,
+    TransferDst,
+    UniformTexel,
+    StorageTexel,
+    Uniform,
+    Storage,
+    Index,
+    Vertex,
+    Indirect
+}
+
+public enum SharingMode
+{
+    Exclusive,
+    Concurrent
 }
 
 public static class Constants

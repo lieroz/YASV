@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Runtime.InteropServices;
-using Avalonia.Platform;
 using Silk.NET.Core;
 using Silk.NET.Core.Native;
 using Silk.NET.SDL;
@@ -66,7 +65,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private KhrSwapchain? _khrSwapchain;
     private SwapchainKHR _swapchain;
     private Image[]? _swapchainImages;
-    private Format _swapchainImageFormat;
+    private Silk.NET.Vulkan.Format _swapchainImageFormat;
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
     private CommandPool[] _commandPools = new CommandPool[Constants.MaxFramesInFlight];
@@ -631,7 +630,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         foreach (var availableFormat in availableFormats)
         {
-            if (availableFormat.Format == Format.B8G8R8A8Srgb && availableFormat.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+            if (availableFormat.Format == Silk.NET.Vulkan.Format.B8G8R8A8Srgb && availableFormat.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
             {
                 return availableFormat;
             }
@@ -713,13 +712,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         if (queueFamilyIndices.Graphics != queueFamilyIndices.Present)
         {
-            swapchainCreateInfoKHR.ImageSharingMode = SharingMode.Concurrent;
+            swapchainCreateInfoKHR.ImageSharingMode = Silk.NET.Vulkan.SharingMode.Concurrent;
             swapchainCreateInfoKHR.QueueFamilyIndexCount = 2;
             swapchainCreateInfoKHR.PQueueFamilyIndices = indices;
         }
         else
         {
-            swapchainCreateInfoKHR.ImageSharingMode = SharingMode.Exclusive;
+            swapchainCreateInfoKHR.ImageSharingMode = Silk.NET.Vulkan.SharingMode.Exclusive;
         }
 
         VulkanException.ThrowsIf(!_vk.TryGetDeviceExtension(_instance, _device, out _khrSwapchain), "Couldn't get 'VK_KHR_swapchain' extension.");
@@ -1020,7 +1019,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         GraphicsPipelineCreateInfo pipelineInfo;
         fixed (PipelineShaderStageCreateInfo* shaderStagesPtr = shaderStages.ToArray())
         {
-            fixed (Format* formatPtr = &_swapchainImageFormat)
+            fixed (Silk.NET.Vulkan.Format* formatPtr = &_swapchainImageFormat)
             {
                 PipelineRenderingCreateInfo pipelineRenderingCreateInfo = new()
                 {
@@ -1097,6 +1096,78 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         foreach (var shader in shaders)
         {
             _vk.DestroyShaderModule(_device, shader.ToVulkanShader(), null);
+        }
+    }
+
+    private int FindMemoryType(uint typeFilter, MemoryPropertyFlags properties)
+    {
+        var memoryProperties = _vk.GetPhysicalDeviceMemoryProperties(_physicalDevice);
+
+        for (int i = 0; i < memoryProperties.MemoryTypeCount; i++)
+        {
+            var bitIsSet = (typeFilter & (1 << i)) != 0;
+            if (bitIsSet && (memoryProperties.MemoryTypes[i].PropertyFlags & properties) == properties)
+            {
+                return i;
+            }
+        }
+
+        throw new VulkanException($"Couldn't find suitable memory type: {typeFilter}.");
+    }
+
+    // TODO: should destroy previous steps if fail?
+    public override unsafe Buffer CreateBuffer(BufferDesc desc)
+    {
+        var vkBufferCreateInfo = desc.ToVulkanBuffer();
+        var result = _vk.CreateBuffer(_device, ref vkBufferCreateInfo, null, out var vkBuffer);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create buffer: {result}.");
+
+        var memoryRequirements = _vk.GetBufferMemoryRequirements(_device, vkBuffer);
+        var memoryAllocateInfo = new MemoryAllocateInfo()
+        {
+            SType = StructureType.MemoryAllocateInfo,
+            AllocationSize = memoryRequirements.Size,
+            MemoryTypeIndex = (uint)FindMemoryType(memoryRequirements.MemoryTypeBits, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit)
+        };
+
+        result = _vk.AllocateMemory(_device, ref memoryAllocateInfo, null, out var vkBufferMemory);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't allocate memory for buffer: {result}.");
+
+        result = _vk.BindBufferMemory(_device, vkBuffer, vkBufferMemory, 0);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't bind memory for buffer: {result}.");
+
+        return new VulkanBufferWrapper(desc.Size, vkBuffer, vkBufferMemory);
+    }
+
+    public override unsafe void DestroyBuffer(Buffer buffer)
+    {
+        var vkBufferWrapper = buffer.ToVulkanBuffer();
+        _vk.DestroyBuffer(_device, vkBufferWrapper.Buffer, null);
+        _vk.FreeMemory(_device, vkBufferWrapper.DeviceMemory, null);
+    }
+
+    public override unsafe void CopyToBuffer(Buffer buffer, byte[] data)
+    {
+        var vkBufferWrapper = buffer.ToVulkanBuffer();
+
+        void* mappedMemory = null;
+        var result = _vk.MapMemory(_device, vkBufferWrapper.DeviceMemory, 0, (ulong)buffer.Size, 0, ref mappedMemory);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't map buffer memory: {result}.");
+
+        Marshal.Copy(data, 0, (nint)mappedMemory, data.Length);
+
+        _vk.UnmapMemory(_device, vkBufferWrapper.DeviceMemory);
+    }
+
+    public override unsafe void BindVertexBuffers(ICommandBuffer commandBuffer, Buffer[] buffers)
+    {
+        var vkBuffers = buffers.Select(x => x.ToVulkanBuffer().Buffer).ToArray();
+        var offsets = new ulong[vkBuffers.Length];
+        Array.Fill<ulong>(offsets, 0);
+
+        fixed (Silk.NET.Vulkan.Buffer* buffersPtr = vkBuffers)
+        {
+            _vk.CmdBindVertexBuffers(commandBuffer.ToVulkanCommandBuffer(), 0, (uint)buffers.Length, buffersPtr, offsets);
         }
     }
 }

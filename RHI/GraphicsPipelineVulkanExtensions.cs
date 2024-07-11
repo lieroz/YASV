@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace YASV.RHI;
 
@@ -19,12 +20,64 @@ internal static class GraphicsPipelineVulkanExtensions
         return ((VulkanGraphicsPipelineWrapper)graphicsPipeline).Pipeline;
     }
 
-    internal static Silk.NET.Vulkan.PipelineVertexInputStateCreateInfo ToVulkanVertexInputState(this VertexInputState vertexInputState)
+    internal static Silk.NET.Vulkan.Format ToVulkanFormat(this Format format)
+    {
+        return format switch
+        {
+            Format.Undefined => Silk.NET.Vulkan.Format.Undefined,
+            Format.R32G32_Sfloat => Silk.NET.Vulkan.Format.R32G32Sfloat,
+            Format.R32G32B32_Sfloat => Silk.NET.Vulkan.Format.R32G32B32A32Sfloat,
+            _ => throw new NotSupportedException($"Format '{format}' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.VertexInputRate ToVulkanVertexInputRate(this VertexInputRate rate)
+    {
+        return rate switch
+        {
+            VertexInputRate.Vertex => Silk.NET.Vulkan.VertexInputRate.Vertex,
+            VertexInputRate.Instance => Silk.NET.Vulkan.VertexInputRate.Instance,
+            _ => throw new NotSupportedException($"Vertex input rate '{rate}' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.VertexInputBindingDescription ToVulkanVertexInputBindingDescription(this VertexInputBindingDesc bindingDescription)
     {
         return new()
         {
-            SType = Silk.NET.Vulkan.StructureType.PipelineVertexInputStateCreateInfo,
+            Binding = (uint)bindingDescription.Binding,
+            Stride = (uint)bindingDescription.Stride,
+            InputRate = bindingDescription.InputRate.ToVulkanVertexInputRate()
         };
+    }
+
+    internal static Silk.NET.Vulkan.VertexInputAttributeDescription ToVulkanVertexInputAttributeDescription(this VertexInputAttributeDesc attributeDescription)
+    {
+        return new()
+        {
+            Location = (uint)attributeDescription.Location,
+            Binding = (uint)attributeDescription.Binding,
+            Format = attributeDescription.Format.ToVulkanFormat(),
+            Offset = (uint)attributeDescription.Offset
+        };
+    }
+
+    internal static unsafe Silk.NET.Vulkan.PipelineVertexInputStateCreateInfo ToVulkanVertexInputState(this VertexInputState vertexInputState)
+    {
+        fixed (Silk.NET.Vulkan.VertexInputBindingDescription* bindingDescriptions = vertexInputState.BindingDescriptions.Select(x => x.ToVulkanVertexInputBindingDescription()).ToArray())
+        {
+            fixed (Silk.NET.Vulkan.VertexInputAttributeDescription* attributeDescriptions = vertexInputState.AttributeDescriptions.Select(x => x.ToVulkanVertexInputAttributeDescription()).ToArray())
+            {
+                return new()
+                {
+                    SType = Silk.NET.Vulkan.StructureType.PipelineVertexInputStateCreateInfo,
+                    VertexBindingDescriptionCount = (uint)vertexInputState.BindingDescriptions.Length,
+                    PVertexBindingDescriptions = bindingDescriptions,
+                    VertexAttributeDescriptionCount = (uint)vertexInputState.AttributeDescriptions.Length,
+                    PVertexAttributeDescriptions = attributeDescriptions
+                };
+            }
+        }
     }
 
     internal static Silk.NET.Vulkan.PrimitiveTopology ToVulkanPrimitiveTopology(this PrimitiveTopology primitiveTopology)
@@ -42,7 +95,7 @@ internal static class GraphicsPipelineVulkanExtensions
             PrimitiveTopology.TriangleListWithAdjacency => Silk.NET.Vulkan.PrimitiveTopology.TriangleListWithAdjacency,
             PrimitiveTopology.TriangleStripWithAdjacency => Silk.NET.Vulkan.PrimitiveTopology.TriangleStripWithAdjacency,
             PrimitiveTopology.PatchList => Silk.NET.Vulkan.PrimitiveTopology.PatchList,
-            _ => throw new NotImplementedException($"Primitive topology '{primitiveTopology}' is not supported.")
+            _ => throw new NotSupportedException($"Primitive topology '{primitiveTopology}' is not supported.")
         };
     }
 

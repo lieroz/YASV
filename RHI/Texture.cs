@@ -1,5 +1,5 @@
 namespace YASV.RHI;
 
-public class Texture : ITexture
+public class Texture
 {
 }

@@ -3,8 +3,25 @@ using System.Collections.Generic;
 
 namespace YASV.RHI;
 
+public struct VertexInputBindingDesc
+{
+    public int Binding { get; set; }
+    public int Stride { get; set; }
+    public VertexInputRate InputRate { get; set; }
+}
+
+public struct VertexInputAttributeDesc
+{
+    public int Location { get; set; }
+    public int Binding { get; set; }
+    public Format Format { get; set; }
+    public int Offset { get; set; }
+}
+
 public struct VertexInputState
 {
+    public VertexInputBindingDesc[] BindingDescriptions { get; set; }
+    public VertexInputAttributeDesc[] AttributeDescriptions { get; set; }
 }
 
 public struct InputAssemblyState
