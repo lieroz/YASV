@@ -26,7 +26,7 @@ internal static class GraphicsPipelineVulkanExtensions
         {
             Format.Undefined => Silk.NET.Vulkan.Format.Undefined,
             Format.R32G32_Sfloat => Silk.NET.Vulkan.Format.R32G32Sfloat,
-            Format.R32G32B32_Sfloat => Silk.NET.Vulkan.Format.R32G32B32A32Sfloat,
+            Format.R32G32B32_Sfloat => Silk.NET.Vulkan.Format.R32G32B32Sfloat,
             _ => throw new NotSupportedException($"Format '{format}' is not supported.")
         };
     }

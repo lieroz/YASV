@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <AvaloniaVersion>11.0.10</AvaloniaVersion>
+    <AvaloniaVersion>11.0.11</AvaloniaVersion>
     <SilkNETVersion>2.21.0</SilkNETVersion>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
