@@ -72,6 +72,6 @@ public abstract class GraphicsDevice(IView view)
     public abstract void DestroyGraphicsPipelines(GraphicsPipeline[] pipelines);
     public abstract void BindGraphicsPipeline(ICommandBuffer commandBuffer, GraphicsPipeline pipeline);
 
-    public abstract Shader CreateShader(string path, Shader.Stage stage);
+    public abstract Shader CreateShader(string path, ShaderStage stage);
     public abstract unsafe void DestroyShaders(Shader[] shaders);
 }

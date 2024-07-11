@@ -147,6 +147,14 @@ public enum ImageLayout
     Present
 }
 
+public enum ShaderStage
+{
+    Vertex,
+    Pixel,
+    Compute,
+    Count
+}
+
 public static class Constants
 {
     public const int MaxFramesInFlight = 2;

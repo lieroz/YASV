@@ -36,7 +36,7 @@ public class DxcShaderCompiler : ShaderCompiler
     }
 
     // TODO: -Qstrip_debug, -Qstrip_reflect to separate structure
-    public override unsafe byte[] Compile(string path, Shader.Stage shaderStage, bool useSpirv)
+    public override unsafe byte[] Compile(string path, ShaderStage shaderStage, bool useSpirv)
     {
         ComPtr<IDxcBlobEncoding> shaderBlob = new();
         SilkMarshal.ThrowHResult(_dxcUtils.LoadFile(path, null, ref shaderBlob));
@@ -50,8 +50,8 @@ public class DxcShaderCompiler : ShaderCompiler
 
         string targetProfile = shaderStage switch
         {
-            Shader.Stage.Vertex => $"vs",
-            Shader.Stage.Fragment => $"ps",
+            ShaderStage.Vertex => $"vs",
+            ShaderStage.Pixel => $"ps",
             _ => throw new NotSupportedException($"Shader stage not supported: {shaderStage}."),
         };
         targetProfile = $"{targetProfile}_{TargetProfileVersion}";

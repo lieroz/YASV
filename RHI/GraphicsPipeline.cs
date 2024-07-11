@@ -121,7 +121,7 @@ public class GraphicsPipelineDesc(Shader[] shaders,
 // TODO: Add validation for fields
 public class GraphicsPipelineDescBuilder
 {
-    private readonly Shader[] _shaders = new Shader[(int)Shader.Stage.Count];
+    private readonly Shader[] _shaders = new Shader[(int)ShaderStage.Count];
     private VertexInputState _vertexInputState;
     private InputAssemblyState _inputAssemblyState;
     private RasterizationState _rasterizationState;
@@ -132,21 +132,21 @@ public class GraphicsPipelineDescBuilder
 
     public GraphicsPipelineDescBuilder SetVertexShader(Shader shader)
     {
-        if (shader._stage != Shader.Stage.Vertex)
+        if (shader.Stage != ShaderStage.Vertex)
         {
-            throw new ArgumentException($"Shader stage is invalid: {shader._stage}.");
+            throw new ArgumentException($"Shader stage is invalid: {shader.Stage}.");
         }
-        _shaders[(int)Shader.Stage.Vertex] = shader;
+        _shaders[(int)ShaderStage.Vertex] = shader;
         return this;
     }
 
-    public GraphicsPipelineDescBuilder SetFragmentShader(Shader shader)
+    public GraphicsPipelineDescBuilder SetPixelShader(Shader shader)
     {
-        if (shader._stage != Shader.Stage.Fragment)
+        if (shader.Stage != ShaderStage.Pixel)
         {
-            throw new ArgumentException($"Shader stage is invalid: {shader._stage}.");
+            throw new ArgumentException($"Shader stage is invalid: {shader.Stage}.");
         }
-        _shaders[(int)Shader.Stage.Fragment] = shader;
+        _shaders[(int)ShaderStage.Pixel] = shader;
         return this;
     }
 

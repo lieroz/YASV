@@ -12,11 +12,11 @@ public class TriangleScene : BaseScene
     public TriangleScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
     {
         _graphicsDevice = graphicsDevice;
-        var vertexShader = _graphicsDevice.CreateShader("Shaders/triangle.vert.hlsl", Shader.Stage.Vertex);
-        var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", Shader.Stage.Fragment);
+        var vertexShader = _graphicsDevice.CreateShader("Shaders/triangle.vert.hlsl", ShaderStage.Vertex);
+        var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", ShaderStage.Pixel);
         _triangleGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
             .SetVertexShader(vertexShader)
-            .SetFragmentShader(fragmentShader)
+            .SetPixelShader(fragmentShader)
             .SetVertexInputState(default)
             .SetInputAssemblyState(new() { PrimitiveTopology = PrimitiveTopology.TriangleList })
             .SetRasterizationState(new()

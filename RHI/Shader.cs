@@ -1,13 +1,6 @@
 namespace YASV.RHI;
 
-public class Shader(Shader.Stage stage)
+public class Shader(ShaderStage stage)
 {
-    public enum Stage
-    {
-        Vertex,
-        Fragment,
-        Count
-    }
-
-    public readonly Stage _stage = stage;
+    public ShaderStage Stage { get; set; } = stage;
 }

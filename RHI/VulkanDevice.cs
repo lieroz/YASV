@@ -975,7 +975,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 shaderStages.Add(new PipelineShaderStageCreateInfo()
                 {
                     SType = StructureType.PipelineShaderStageCreateInfo,
-                    Stage = shader._stage.ToVulkanShaderStage(),
+                    Stage = shader.Stage.ToVulkanShaderStage(),
                     Module = vulkanShader,
                     PName = (byte*)SilkMarshal.StringToPtr("main"),
                 });
@@ -1073,7 +1073,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdBindPipeline(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, graphicsPipeline.ToVulkanGraphicsPipeline());
     }
 
-    public override unsafe Shader CreateShader(string path, Shader.Stage stage)
+    public override unsafe Shader CreateShader(string path, ShaderStage stage)
     {
         var code = _shaderCompiler.Compile(path, stage, true);
         fixed (byte* pCode = code)
