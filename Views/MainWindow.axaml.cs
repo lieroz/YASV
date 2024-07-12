@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Avalonia.Controls;
 using YASV.Scenes;
 using YASV.ViewModels;
@@ -10,7 +9,7 @@ namespace YASV.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly List<Type> _sceneTypes = GetSceneTypes();
+    private readonly List<Type> _sceneTypes = Helpers.GetSceneTypes();
     private readonly SilkNETWindow? _renderWindow;
 
     public MainWindow()
@@ -27,22 +26,6 @@ public partial class MainWindow : Window
     {
         _renderWindow!.CurrentScene?.Dispose();
         _renderWindow!.CurrentScene = (BaseScene)Activator.CreateInstance(_sceneTypes[scenes.SelectedIndex], _renderWindow.GraphicsDevice)!;
-    }
-
-    private static List<Type> GetSceneTypes()
-    {
-        var types = new List<Type>();
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            foreach (var type in asm.GetTypes())
-            {
-                if (type.GetCustomAttributes<SceneAttribute>(true).Any())
-                {
-                    types.Add(type);
-                }
-            }
-        }
-        return types;
     }
 
     protected override void OnClosed(EventArgs e)

@@ -8,7 +8,7 @@ namespace YASV;
 
 internal sealed class ProgramConsole
 {
-    public static IView CreateWindow()
+    private static IView CreateWindow()
     {
         var options = WindowOptions.DefaultVulkan with
         {
@@ -34,7 +34,17 @@ internal sealed class ProgramConsole
         var graphicsDevice = new VulkanDevice(window);
         graphicsDevice.Create(Sdl.GetApi());
 
-        var scene = new TriangleScene(graphicsDevice);
+        var sceneTypes = Helpers.GetSceneTypes();
+        for (int i = 0; i < sceneTypes.Count; i++)
+        {
+            Console.WriteLine($"{i}. {sceneTypes[i].Name}");
+        }
+
+        Console.WriteLine($"Choose scene: ");
+        var key = Console.ReadLine();
+        var sceneIndex = int.Parse(key!);
+
+        var scene = (BaseScene)Activator.CreateInstance(sceneTypes[sceneIndex], graphicsDevice)!;
 
         window.Render += (double delta) =>
         {
