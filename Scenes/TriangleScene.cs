@@ -10,7 +10,7 @@ public class TriangleScene : BaseScene
     private readonly GraphicsPipelineLayout _triangleGraphicsPipelineLayout;
     private readonly GraphicsPipelineDesc _triangleGraphicsPipelineDesc;
     private readonly GraphicsPipeline _triangleGraphicsPipeline;
-    private readonly Buffer _triangleVertexBuffer;
+    private readonly YASV.RHI.Buffer _triangleVertexBuffer;
 
     private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
     {

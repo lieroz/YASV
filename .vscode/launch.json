@@ -25,5 +25,17 @@
             "stopAtEntry": false,
             "internalConsoleOptions": "openOnSessionStart",
         },
+        {
+            "name": "GPU Debug",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "Build: GPU Debug",
+            "program": "${workspaceFolder}/bin/Debug/net8.0/YASV_GPUDebug.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "internalConsoleOptions": "openOnSessionStart",
+        }
     ]
 }

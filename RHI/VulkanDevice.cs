@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reactive.Disposables;
 using System.Runtime.InteropServices;
 using Silk.NET.Core;
 using Silk.NET.Core.Native;
@@ -256,12 +255,12 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't determine required extensions count: {sdlApi.GetErrorS()}.");
 
         var requiredExtensions = (byte**)Marshal.AllocHGlobal((nint)(sizeof(byte*) * count));
-        using var defer = Disposable.Create(() => Marshal.FreeHGlobal((nint)requiredExtensions));
 
         sdlBool = sdlApi.VulkanGetInstanceExtensions((Silk.NET.SDL.Window*)view.Handle, &count, requiredExtensions);
         VulkanException.ThrowsIf(sdlBool == SdlBool.False, $"Couldn't get required extensions: {sdlApi.GetErrorS()}.");
 
         var extensions = new List<string>(SilkMarshal.PtrToStringArray((nint)requiredExtensions, (int)count));
+        Marshal.FreeHGlobal((nint)requiredExtensions);
 #if DEBUG
         extensions.Add("VK_EXT_debug_utils");
 #endif

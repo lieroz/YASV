@@ -22,6 +22,16 @@
                 "Release"
             ],
             "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Build: GPU Debug",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/YASV_GPUDebug.csproj"
+            ],
+            "problemMatcher": "$msCompile"
         }
     ]
 }
