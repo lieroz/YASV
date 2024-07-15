@@ -1139,7 +1139,12 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return new VulkanBufferWrapper(desc.Size, vkBuffer, vkBufferMemory);
     }
 
-    public override Buffer CreateVertexBuffer(BufferDesc desc)
+    protected override Buffer CreateVertexBufferInternal(BufferDesc desc)
+    {
+        return CreateBufferInternal(desc, MemoryPropertyFlags.DeviceLocalBit);
+    }
+
+    protected override Buffer CreateIndexBufferInternal(BufferDesc desc)
     {
         return CreateBufferInternal(desc, MemoryPropertyFlags.DeviceLocalBit);
     }
@@ -1237,5 +1242,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         {
             _vk.CmdBindVertexBuffers(commandBuffer.ToVulkanCommandBuffer(), 0, (uint)buffers.Length, buffersPtr, offsets);
         }
+    }
+
+    public override unsafe void BindIndexBuffer(ICommandBuffer commandBuffer, Buffer buffer, IndexType indexType)
+    {
+        _vk.CmdBindIndexBuffer(commandBuffer.ToVulkanCommandBuffer(), buffer.ToVulkanBuffer().Buffer, 0, indexType.ToVulkanIndexType());
     }
 }

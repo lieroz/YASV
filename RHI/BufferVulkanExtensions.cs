@@ -59,4 +59,14 @@ internal static class BufferVulkanExtensions
             SharingMode = desc.SharingMode.ToVulkanSharingMode()
         };
     }
+
+    internal static Silk.NET.Vulkan.IndexType ToVulkanIndexType(this IndexType indexType)
+    {
+        return indexType switch
+        {
+            IndexType.Uint16 => Silk.NET.Vulkan.IndexType.Uint16,
+            IndexType.Uint32 => Silk.NET.Vulkan.IndexType.Uint32,
+            _ => throw new NotSupportedException($"Index type '{indexType}' is not supported.")
+        };
+    }
 }

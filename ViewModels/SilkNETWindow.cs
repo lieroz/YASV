@@ -91,5 +91,10 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         _sdlActions.Enqueue(() => Sdl.GetApi().SetWindowSize((Silk.NET.SDL.Window*)_window!.Handle, (int)e.NewSize.Width, (int)e.NewSize.Height));
     }
 
+    public void EnqueueAction(Action action)
+    {
+        _sdlActions.Enqueue(action);
+    }
+
     public GraphicsDevice GraphicsDevice { get => _graphicsDevice!; }
 }

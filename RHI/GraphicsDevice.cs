@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Numerics;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
@@ -132,10 +134,32 @@ public abstract class GraphicsDevice
     public abstract Shader CreateShader(string path, ShaderStage stage);
     public abstract unsafe void DestroyShaders(Shader[] shaders);
 
-    public abstract Buffer CreateVertexBuffer(BufferDesc desc);
+    public Buffer CreateVertexBuffer(BufferDesc desc)
+    {
+        if (!desc.Usages.Contains(BufferUsage.Vertex))
+        {
+            throw new ArgumentException("Vertex buffer must container BufferUsage.Vertex bit!");
+        }
+        return CreateVertexBufferInternal(desc);
+    }
+
+    public Buffer CreateIndexBuffer(BufferDesc desc)
+    {
+        if (!desc.Usages.Contains(BufferUsage.Index))
+        {
+            throw new ArgumentException("Index buffer must container BufferUsage.Index bit!");
+        }
+        return CreateIndexBufferInternal(desc);
+    }
+
     public abstract Buffer CreateStagingBuffer(BufferDesc desc);
+
+    protected abstract Buffer CreateVertexBufferInternal(BufferDesc desc);
+    protected abstract Buffer CreateIndexBufferInternal(BufferDesc desc);
+
     public abstract void DestroyBuffer(Buffer buffer);
     public abstract unsafe void CopyDataToBuffer(Buffer buffer, byte[] data, int currentFrame);
     // TODO: Add offsets
     public abstract void BindVertexBuffers(ICommandBuffer commandBuffer, Buffer[] buffers);
+    public abstract void BindIndexBuffer(ICommandBuffer commandBuffer, Buffer buffer, IndexType indexType);
 }

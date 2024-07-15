@@ -250,6 +250,12 @@ public enum SharingMode
     Concurrent
 }
 
+public enum IndexType
+{
+    Uint16,
+    Uint32
+}
+
 public static class Constants
 {
     public const int MaxFramesInFlight = 2;
