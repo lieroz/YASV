@@ -72,7 +72,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
 
-    public override unsafe void Create(Sdl sdlApi)
+    public override void Create(Sdl sdlApi)
     {
         CreateInstance(sdlApi, _view);
 #if DEBUG
@@ -87,7 +87,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateSyncObjects();
     }
 
-    public override unsafe void Destroy()
+    protected override void DestroyInternal()
     {
         DestroySyncObjects();
         DestroyCommandPool();
@@ -151,7 +151,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var buffer = commandBuffer.ToVulkanCommandBuffer();
         var signalSemaphores = stackalloc[] { _renderFinishedSemaphores![frameIndex] };
 
-        SubmitInfo submitInfo = new()
+        var submitInfo = new SubmitInfo()
         {
             SType = StructureType.SubmitInfo,
             WaitSemaphoreCount = 1,
@@ -397,6 +397,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     #region Physical Device
 
+    // TODO: add separate transfer and compute queues
     private unsafe QueueFamilyIndices FindQueueFamilies(PhysicalDevice physicalDevice)
     {
         QueueFamilyIndices queueFamilyIndices = new();
@@ -1115,7 +1116,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     }
 
     // TODO: should destroy previous steps if fail?
-    public override unsafe Buffer CreateBuffer(BufferDesc desc)
+    private unsafe Buffer CreateBufferInternal(BufferDesc desc, MemoryPropertyFlags memoryPropertyFlags)
     {
         var vkBufferCreateInfo = desc.ToVulkanBuffer();
         var result = _vk.CreateBuffer(_device, ref vkBufferCreateInfo, null, out var vkBuffer);
@@ -1126,7 +1127,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         {
             SType = StructureType.MemoryAllocateInfo,
             AllocationSize = memoryRequirements.Size,
-            MemoryTypeIndex = (uint)FindMemoryType(memoryRequirements.MemoryTypeBits, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit)
+            MemoryTypeIndex = (uint)FindMemoryType(memoryRequirements.MemoryTypeBits, memoryPropertyFlags)
         };
 
         result = _vk.AllocateMemory(_device, ref memoryAllocateInfo, null, out var vkBufferMemory);
@@ -1138,6 +1139,16 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return new VulkanBufferWrapper(desc.Size, vkBuffer, vkBufferMemory);
     }
 
+    public override Buffer CreateVertexBuffer(BufferDesc desc)
+    {
+        return CreateBufferInternal(desc, MemoryPropertyFlags.DeviceLocalBit);
+    }
+
+    public override Buffer CreateStagingBuffer(BufferDesc desc)
+    {
+        return CreateBufferInternal(desc, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
+    }
+
     public override unsafe void DestroyBuffer(Buffer buffer)
     {
         var vkBufferWrapper = buffer.ToVulkanBuffer();
@@ -1145,17 +1156,75 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.FreeMemory(_device, vkBufferWrapper.DeviceMemory, null);
     }
 
-    public override unsafe void CopyToBuffer(Buffer buffer, byte[] data)
+    // TODO: add transfer command pool
+    private unsafe void CopyBufferInternal(Buffer srcBuffer, Buffer dstBuffer, int frameIndex)
     {
-        var vkBufferWrapper = buffer.ToVulkanBuffer();
+        var vkSrcBuffer = srcBuffer.ToVulkanBuffer();
+        var vkDstBuffer = dstBuffer.ToVulkanBuffer();
+
+        var allocInfo = new CommandBufferAllocateInfo()
+        {
+            SType = StructureType.CommandBufferAllocateInfo,
+            Level = CommandBufferLevel.Primary,
+            CommandPool = _commandPools[frameIndex],
+            CommandBufferCount = 1
+        };
+
+        var result = _vk.AllocateCommandBuffers(_device, ref allocInfo, out var commandBuffer);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkAllocateCommandBuffers failed: {result}.");
+
+        var beginInfo = new CommandBufferBeginInfo()
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+        };
+
+        result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
+
+        var copyRegion = new BufferCopy()
+        {
+            SrcOffset = 0,
+            DstOffset = 0,
+            Size = (ulong)vkDstBuffer.Size
+        };
+
+        _vk.CmdCopyBuffer(commandBuffer, vkSrcBuffer.Buffer, vkDstBuffer.Buffer, [copyRegion]);
+        _vk.EndCommandBuffer(commandBuffer);
+
+        var submitInfo = new SubmitInfo()
+        {
+            SType = StructureType.SubmitInfo,
+            CommandBufferCount = 1,
+            PCommandBuffers = &commandBuffer
+        };
+
+        result = _vk.QueueSubmit(_graphicsQueue, 1, &submitInfo, default);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
+
+        result = _vk.QueueWaitIdle(_graphicsQueue);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
+
+        _vk.FreeCommandBuffers(_device, _commandPools[frameIndex], [commandBuffer]);
+    }
+
+    public override unsafe void CopyDataToBuffer(Buffer buffer, byte[] data, int currentFrame)
+    {
+        var frameIndex = currentFrame % Constants.MaxFramesInFlight;
+
+        var stagingBuffer = GetStagingBuffer(buffer.Size);
+        var vkStagingBuffer = stagingBuffer.ToVulkanBuffer();
 
         void* mappedMemory = null;
-        var result = _vk.MapMemory(_device, vkBufferWrapper.DeviceMemory, 0, (ulong)buffer.Size, 0, ref mappedMemory);
+        var result = _vk.MapMemory(_device, vkStagingBuffer.DeviceMemory, 0, (ulong)stagingBuffer.Size, 0, ref mappedMemory);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't map buffer memory: {result}.");
 
         Marshal.Copy(data, 0, (nint)mappedMemory, data.Length);
+        _vk.UnmapMemory(_device, vkStagingBuffer.DeviceMemory);
 
-        _vk.UnmapMemory(_device, vkBufferWrapper.DeviceMemory);
+        CopyBufferInternal(stagingBuffer, buffer, frameIndex);
+
+        ReturnStagingBuffer(stagingBuffer);
     }
 
     public override unsafe void BindVertexBuffers(ICommandBuffer commandBuffer, Buffer[] buffers)

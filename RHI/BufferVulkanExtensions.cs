@@ -45,11 +45,17 @@ internal static class BufferVulkanExtensions
 
     internal static Silk.NET.Vulkan.BufferCreateInfo ToVulkanBuffer(this BufferDesc desc)
     {
+        var vkUsage = Silk.NET.Vulkan.BufferUsageFlags.None;
+        foreach (var usage in desc.Usages)
+        {
+            vkUsage |= usage.ToVulkanBufferUsageFlags();
+        }
+
         return new()
         {
             SType = Silk.NET.Vulkan.StructureType.BufferCreateInfo,
             Size = (ulong)desc.Size,
-            Usage = desc.Usage.ToVulkanBufferUsageFlags(),
+            Usage = vkUsage,
             SharingMode = desc.SharingMode.ToVulkanSharingMode()
         };
     }

@@ -3,7 +3,7 @@ namespace YASV.RHI;
 public class BufferDesc
 {
     public int Size { get; set; }
-    public BufferUsage Usage { get; set; }
+    public BufferUsage[] Usages { get; set; } = [BufferUsage.None];
     public SharingMode SharingMode { get; set; }
 }
 

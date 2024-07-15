@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Numerics;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
 
@@ -7,28 +8,44 @@ namespace YASV.RHI;
 public interface ICommandBuffer { }
 
 // TODO: rearrange
-public abstract class GraphicsDevice(IView view)
+public abstract class GraphicsDevice
 {
     private const int PreallocatedBuffersCount = 3;
 
-    protected readonly IView _view = view;
+    protected readonly IView _view;
 
     public abstract void Create(Sdl sdlApi);
 
-    public abstract void Destroy();
+    public void Destroy()
+    {
+        foreach (var pool in _bufferPools)
+        {
+            foreach (var buffer in pool.Value)
+            {
+                DestroyBuffer(buffer);
+            }
+        }
+
+        DestroyInternal();
+    }
+
+    protected abstract void DestroyInternal();
 
     public abstract void WaitIdle();
 
     public abstract int BeginFrame(int currentFrame);
     public abstract void EndFrame(ICommandBuffer commandBuffer, int currentFrame, int imageIndex);
 
-    // TODO: generalize this, add more options
-    public abstract void ImageBarrier(ICommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout);
+    public GraphicsDevice(IView view)
+    {
+        _view = view;
+        for (int i = 0; i < _commandBuffers.Length; i++)
+        {
+            _commandBuffers[i] = [];
+        }
+    }
 
-    public abstract void BeginRendering(ICommandBuffer commandBuffer, int imageIndex);
-    public abstract void EndRendering(ICommandBuffer commandBuffer);
-
-    private readonly ConcurrentBag<ICommandBuffer>[] _commandBuffers = [[], []];
+    private readonly ConcurrentBag<ICommandBuffer>[] _commandBuffers = new ConcurrentBag<ICommandBuffer>[Constants.MaxFramesInFlight];
 
     public ICommandBuffer GetCommandBuffer(int frameNumber)
     {
@@ -53,6 +70,49 @@ public abstract class GraphicsDevice(IView view)
     protected abstract ICommandBuffer[] AllocateCommandBuffers(int index, int count);
     protected abstract void ResetCommandBuffers(int index);
 
+    private readonly ConcurrentDictionary<int, ConcurrentStack<Buffer>> _bufferPools = [];
+
+    protected Buffer GetStagingBuffer(int size)
+    {
+        var poolSize = (int)BitOperations.RoundUpToPowerOf2((uint)size);
+        if (_bufferPools.TryGetValue(poolSize, out var buffers))
+        {
+            if (buffers.TryPop(out var buffer))
+            {
+                return buffer;
+            }
+        }
+
+        return CreateStagingBuffer(new()
+        {
+            Size = poolSize,
+            Usages = [BufferUsage.TransferSrc],
+            SharingMode = SharingMode.Exclusive
+        });
+    }
+
+    protected void ReturnStagingBuffer(Buffer buffer)
+    {
+        if (!_bufferPools.TryGetValue(buffer.Size, out var buffers))
+        {
+            var stack = new ConcurrentStack<Buffer>();
+            stack.Push(buffer);
+
+            // TODO: check for infinite loop
+            while (!_bufferPools.TryAdd(buffer.Size, stack)) ;
+        }
+        else
+        {
+            buffers.Push(buffer);
+        }
+    }
+
+    // TODO: generalize this, add more options
+    public abstract void ImageBarrier(ICommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout);
+
+    public abstract void BeginRendering(ICommandBuffer commandBuffer, int imageIndex);
+    public abstract void EndRendering(ICommandBuffer commandBuffer);
+
     public abstract void BeginCommandBuffer(ICommandBuffer commandBuffer);
     public abstract void EndCommandBuffer(ICommandBuffer commandBuffer);
 
@@ -72,9 +132,10 @@ public abstract class GraphicsDevice(IView view)
     public abstract Shader CreateShader(string path, ShaderStage stage);
     public abstract unsafe void DestroyShaders(Shader[] shaders);
 
-    public abstract Buffer CreateBuffer(BufferDesc desc);
+    public abstract Buffer CreateVertexBuffer(BufferDesc desc);
+    public abstract Buffer CreateStagingBuffer(BufferDesc desc);
     public abstract void DestroyBuffer(Buffer buffer);
-    public abstract void CopyToBuffer(Buffer buffer, byte[] data);
+    public abstract unsafe void CopyDataToBuffer(Buffer buffer, byte[] data, int currentFrame);
     // TODO: Add offsets
     public abstract void BindVertexBuffers(ICommandBuffer commandBuffer, Buffer[] buffers);
 }

@@ -148,10 +148,10 @@ public class TriangleScene : BaseScene
         });
         _triangleGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_triangleGraphicsPipelineDesc, _triangleGraphicsPipelineLayout);
 
-        _triangleVertexBuffer = _graphicsDevice.CreateBuffer(new()
+        _triangleVertexBuffer = _graphicsDevice.CreateVertexBuffer(new()
         {
             Size = Marshal.SizeOf<Vertex>() * _vertices.Length,
-            Usage = BufferUsage.Vertex,
+            Usages = [BufferUsage.Vertex, BufferUsage.TransferDst],
             SharingMode = SharingMode.Exclusive
         });
 
@@ -160,7 +160,7 @@ public class TriangleScene : BaseScene
         {
             System.Buffer.BlockCopy(_vertices[i].Bytes, 0, data, Marshal.SizeOf<Vertex>() * i, Marshal.SizeOf<Vertex>());
         }
-        _graphicsDevice.CopyToBuffer(_triangleVertexBuffer, data);
+        _graphicsDevice.CopyDataToBuffer(_triangleVertexBuffer, data, _currentFrame);
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
 

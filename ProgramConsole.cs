@@ -55,6 +55,7 @@ internal sealed class ProgramConsole
         graphicsDevice.WaitIdle();
 
         scene.Dispose();
+
         graphicsDevice.Destroy();
     }
 }
