@@ -12,7 +12,7 @@ public interface ICommandBuffer { }
 // TODO: rearrange
 public abstract class GraphicsDevice
 {
-    private const int PreallocatedBuffersCount = 3;
+    protected const int PreallocatedBuffersCount = 3;
 
     protected readonly IView _view;
 
@@ -20,7 +20,7 @@ public abstract class GraphicsDevice
 
     public void Destroy()
     {
-        foreach (var pool in _bufferPools)
+        foreach (var pool in _bufferPool)
         {
             foreach (var buffer in pool.Value)
             {
@@ -72,12 +72,12 @@ public abstract class GraphicsDevice
     protected abstract ICommandBuffer[] AllocateCommandBuffers(int index, int count);
     protected abstract void ResetCommandBuffers(int index);
 
-    private readonly ConcurrentDictionary<int, ConcurrentStack<Buffer>> _bufferPools = [];
+    private readonly ConcurrentDictionary<int, ConcurrentStack<Buffer>> _bufferPool = [];
 
     protected Buffer GetStagingBuffer(int size)
     {
         var poolSize = (int)BitOperations.RoundUpToPowerOf2((uint)size);
-        if (_bufferPools.TryGetValue(poolSize, out var buffers))
+        if (_bufferPool.TryGetValue(poolSize, out var buffers))
         {
             if (buffers.TryPop(out var buffer))
             {
@@ -95,13 +95,13 @@ public abstract class GraphicsDevice
 
     protected void ReturnStagingBuffer(Buffer buffer)
     {
-        if (!_bufferPools.TryGetValue(buffer.Size, out var buffers))
+        if (!_bufferPool.TryGetValue(buffer.Size, out var buffers))
         {
             var stack = new ConcurrentStack<Buffer>();
             stack.Push(buffer);
 
             // TODO: check for infinite loop
-            while (!_bufferPools.TryAdd(buffer.Size, stack)) ;
+            while (!_bufferPool.TryAdd(buffer.Size, stack)) ;
         }
         else
         {

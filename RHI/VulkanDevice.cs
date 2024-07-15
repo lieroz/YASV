@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -44,6 +45,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         public uint? Graphics { get; set; }
         public uint? Present { get; set; }
+        public uint? Transfer { get; set; }
 
         public readonly bool IsComplete() => Graphics.HasValue
                                           && Present.HasValue;
@@ -68,9 +70,11 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Extent2D _swapchainExtent;
     private ImageView[]? _swapchainImageViews;
     private CommandPool[] _commandPools = new CommandPool[Constants.MaxFramesInFlight];
+    private CommandPool _transferCommandPool;
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
+    private readonly ConcurrentBag<CommandBuffer> _transferCommandBufferPool = [];
 
     public override void Create(Sdl sdlApi)
     {
@@ -90,7 +94,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     protected override void DestroyInternal()
     {
         DestroySyncObjects();
-        DestroyCommandPool();
+        DestroyCommandPools();
 
         CleanupSwapchain();
 
@@ -418,6 +422,12 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 queueFamilyIndices.Graphics = i;
             }
 
+            // Separate queue for data transfer from CPU to GPU operations
+            if (queueFamilies[i].QueueFlags.HasFlag(QueueFlags.TransferBit) && !queueFamilies[i].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
+            {
+                queueFamilyIndices.Transfer = i;
+            }
+
             var result = _khrSurface!.GetPhysicalDeviceSurfaceSupport(physicalDevice, i, _surfaceKHR, out var presentSupported);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't get physical device surface support: {result}.");
 
@@ -425,6 +435,11 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             {
                 queueFamilyIndices.Present = i;
             }
+        }
+
+        if (!queueFamilyIndices.Transfer.HasValue)
+        {
+            queueFamilyIndices.Transfer = queueFamilyIndices.Graphics;
         }
 
         return queueFamilyIndices;
@@ -791,21 +806,38 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
 
+        var commandPoolInfo = new CommandPoolCreateInfo()
+        {
+            SType = StructureType.CommandPoolCreateInfo,
+            Flags = CommandPoolCreateFlags.TransientBit | CommandPoolCreateFlags.ResetCommandBufferBit,
+            QueueFamilyIndex = (uint)queueFamilyIndices.Transfer!,
+        };
+
+        var result = _vk.CreateCommandPool(_device, ref commandPoolInfo, null, out _transferCommandPool);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create command pool: {result}.");
+
         for (int i = 0; i < Constants.MaxFramesInFlight; i++)
         {
-            CommandPoolCreateInfo commandPoolInfo = new()
+            commandPoolInfo = new()
             {
                 SType = StructureType.CommandPoolCreateInfo,
                 Flags = CommandPoolCreateFlags.ResetCommandBufferBit,
                 QueueFamilyIndex = (uint)queueFamilyIndices.Graphics!,
             };
 
-            var result = _vk.CreateCommandPool(_device, ref commandPoolInfo, null, out _commandPools[i]);
+            result = _vk.CreateCommandPool(_device, ref commandPoolInfo, null, out _commandPools[i]);
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create command pool: {result}.");
         }
     }
 
-    private unsafe void DestroyCommandPool() => _commandPools.All(x => { _vk.DestroyCommandPool(_device, x, null); return true; });
+    private unsafe void DestroyCommandPools()
+    {
+        _vk.DestroyCommandPool(_device, _transferCommandPool, null);
+        _commandPools.All(x =>
+        {
+            _vk.DestroyCommandPool(_device, x, null); return true;
+        });
+    }
 
     #endregion
 
@@ -1161,22 +1193,38 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.FreeMemory(_device, vkBufferWrapper.DeviceMemory, null);
     }
 
-    // TODO: add transfer command pool
-    private unsafe void CopyBufferInternal(Buffer srcBuffer, Buffer dstBuffer, int frameIndex)
+    private CommandBuffer GetTransferCommandBuffer()
     {
-        var vkSrcBuffer = srcBuffer.ToVulkanBuffer();
-        var vkDstBuffer = dstBuffer.ToVulkanBuffer();
+        if (_transferCommandBufferPool.TryTake(out var commandBuffer))
+        {
+            return commandBuffer;
+        }
 
         var allocInfo = new CommandBufferAllocateInfo()
         {
             SType = StructureType.CommandBufferAllocateInfo,
             Level = CommandBufferLevel.Primary,
-            CommandPool = _commandPools[frameIndex],
-            CommandBufferCount = 1
+            CommandPool = _transferCommandPool,
+            CommandBufferCount = PreallocatedBuffersCount
         };
 
-        var result = _vk.AllocateCommandBuffers(_device, ref allocInfo, out var commandBuffer);
+        var result = _vk.AllocateCommandBuffers(_device, ref allocInfo, out commandBuffer);
         VulkanException.ThrowsIf(result != Result.Success, $"vkAllocateCommandBuffers failed: {result}.");
+
+        return commandBuffer;
+    }
+
+    private void ReturnTransferCommandBuffer(CommandBuffer commandBuffer)
+    {
+        _transferCommandBufferPool.Add(commandBuffer);
+    }
+
+    private unsafe void CopyBufferInternal(Buffer srcBuffer, Buffer dstBuffer, int frameIndex)
+    {
+        var vkSrcBuffer = srcBuffer.ToVulkanBuffer();
+        var vkDstBuffer = dstBuffer.ToVulkanBuffer();
+
+        var commandBuffer = GetTransferCommandBuffer();
 
         var beginInfo = new CommandBufferBeginInfo()
         {
@@ -1184,7 +1232,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             Flags = CommandBufferUsageFlags.OneTimeSubmitBit
         };
 
-        result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
+        var result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
         VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
 
         var copyRegion = new BufferCopy()
@@ -1210,7 +1258,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         result = _vk.QueueWaitIdle(_graphicsQueue);
         VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
 
-        _vk.FreeCommandBuffers(_device, _commandPools[frameIndex], [commandBuffer]);
+        _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
     }
 
     public override unsafe void CopyDataToBuffer(Buffer buffer, byte[] data, int currentFrame)
