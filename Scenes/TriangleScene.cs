@@ -44,14 +44,14 @@ public class TriangleScene : BaseScene
                     {
                         Binding = 0,
                         Location = 0,
-                        Format = Format.R32G32_Sfloat,
+                        Format = Format.R32G32_Float,
                         Offset = (int)Marshal.OffsetOf<Vertex>("_position")
                     },
                     new()
                     {
                         Binding = 0,
                         Location = 1,
-                        Format = Format.R32G32B32_Sfloat,
+                        Format = Format.R32G32B32_Float,
                         Offset = (int)Marshal.OffsetOf<Vertex>("_color")
                     }
                 ];
