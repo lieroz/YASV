@@ -56,7 +56,7 @@ public abstract class GraphicsDevice(IView view)
 
     protected void ReturnStagingBuffer(StagingBuffer stagingBuffer)
     {
-        _stagingBufferPool.ReturnStagingBuffer(stagingBuffer);
+        _stagingBufferPool.ReturnStagingBuffer(stagingBuffer, DestroyStagingBuffer);
     }
 
     // TODO: generalize this, add more options

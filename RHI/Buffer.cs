@@ -43,15 +43,20 @@ public class StagingBufferPool
         return null;
     }
 
-    public void ReturnStagingBuffer(StagingBuffer buffer)
+    public void ReturnStagingBuffer(StagingBuffer buffer, Action<StagingBuffer> action)
     {
         if (!_pools.TryGetValue(buffer.Size, out var buffers))
         {
             var stack = new ConcurrentStack<StagingBuffer>();
             stack.Push(buffer);
 
-            // TODO: check for infinite loop
-            while (!_pools.TryAdd(buffer.Size, stack)) ;
+            int retries = 0;
+            for (; retries < 3 && !_pools.TryAdd(buffer.Size, stack); retries++) ;
+
+            if (retries == 3)
+            {
+                action(buffer);
+            }
         }
         else
         {

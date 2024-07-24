@@ -21,7 +21,6 @@ internal sealed class VulkanException(string? message = null) : Exception(messag
     }
 }
 
-// TODO: rearrange
 public class VulkanDevice(IView view) : GraphicsDevice(view)
 {
     private readonly ShaderCompiler _shaderCompiler = new DxcShaderCompiler();
@@ -213,7 +212,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
 
-    // TODO: add separate transfer and compute queues
     private unsafe QueueFamilyIndices FindQueueFamilies(PhysicalDevice physicalDevice)
     {
         QueueFamilyIndices queueFamilyIndices = new();
