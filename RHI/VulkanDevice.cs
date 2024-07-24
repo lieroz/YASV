@@ -73,179 +73,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Fence[]? _inFlightFences;
     private readonly ConcurrentBag<Silk.NET.Vulkan.CommandBuffer> _transferCommandBufferPool = [];
 
-    public override void Create(Sdl sdlApi)
-    {
-        CreateInstance(sdlApi, _view);
-#if DEBUG
-        SetupDebugMessenger();
-#endif
-        CreateSurface(sdlApi, _view);
-        PickPhysicalDevice();
-        CreateLogicalDevice();
-        CreateSwapchain(_view);
-        CreateImageViews();
-        CreateCommandPool();
-        CreateSyncObjects();
-    }
-
-    protected override void DestroyInternal()
-    {
-        DestroySyncObjects();
-        DestroyCommandPools();
-
-        CleanupSwapchain();
-
-        DestroyLogicalDevice();
-        DestroySurface();
-#if DEBUG
-        DestroyDebugMessenger();
-#endif
-        DestroyInstance();
-    }
-
-    public override unsafe void WaitIdle()
-    {
-        _vk.DeviceWaitIdle(_device);
-    }
-
-    private unsafe void CleanupSwapchain()
-    {
-        DestroyImageViews();
-        DestroySwapchain();
-    }
-
-    // TODO: Recreate render passes
-    private void RecreateSwapchain()
-    {
-        WaitIdle();
-
-        CleanupSwapchain();
-
-        CreateSwapchain(_view);
-        CreateImageViews();
-    }
-
-    public override unsafe int BeginFrameInternal(int frameIndex)
-    {
-        _vk.WaitForFences(_device, 1, ref _inFlightFences![frameIndex], true, uint.MaxValue);
-
-        uint imageIndex = 0;
-        var result = _khrSwapchain!.AcquireNextImage(_device, _swapchain, uint.MaxValue, _imageAvailableSemaphores![frameIndex], default, &imageIndex);
-        if (result == Result.ErrorOutOfDateKhr)
-        {
-            RecreateSwapchain();
-            return -1;
-        }
-
-        VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
-
-        _vk.ResetFences(_device, 1, ref _inFlightFences![frameIndex]);
-        return (int)imageIndex;
-    }
-
-    public override unsafe void EndFrameInternal(CommandBuffer commandBuffer, int frameIndex, int imageIndex)
-    {
-        var waitSemaphores = stackalloc[] { _imageAvailableSemaphores![frameIndex] };
-        var waitStages = stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit };
-        var buffer = commandBuffer.ToVulkanCommandBuffer();
-        var signalSemaphores = stackalloc[] { _renderFinishedSemaphores![frameIndex] };
-
-        var submitInfo = new SubmitInfo()
-        {
-            SType = StructureType.SubmitInfo,
-            WaitSemaphoreCount = 1,
-            PWaitSemaphores = waitSemaphores,
-            PWaitDstStageMask = waitStages,
-            CommandBufferCount = 1,
-            PCommandBuffers = &buffer,
-            SignalSemaphoreCount = 1,
-            PSignalSemaphores = signalSemaphores
-        };
-
-        var result = _vk.QueueSubmit(_graphicsQueue, 1, ref submitInfo, _inFlightFences![frameIndex]);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
-
-        var swapchains = stackalloc[] { _swapchain };
-
-        PresentInfoKHR presentInfo = new()
-        {
-            SType = StructureType.PresentInfoKhr,
-            WaitSemaphoreCount = 1,
-            PWaitSemaphores = signalSemaphores,
-            SwapchainCount = 1,
-            PSwapchains = swapchains,
-            PImageIndices = (uint*)&imageIndex,
-        };
-
-        result = _khrSwapchain!.QueuePresent(_graphicsQueue, ref presentInfo);
-        if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
-        {
-            RecreateSwapchain();
-            return;
-        }
-
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't present image: {result}.");
-    }
-
-    public override unsafe void ImageBarrier(CommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout)
-    {
-        ImageMemoryBarrier barrier = new()
-        {
-            SType = StructureType.ImageMemoryBarrier,
-            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
-            OldLayout = oldLayout.ToVulkanImageLayout(),
-            NewLayout = newLayout.ToVulkanImageLayout(),
-            Image = _swapchainImages![imageIndex], // TODO: pass texture when implemented
-            SubresourceRange = new()
-            {
-                AspectMask = ImageAspectFlags.ColorBit,
-                BaseMipLevel = 0,
-                LevelCount = 1,
-                BaseArrayLayer = 0,
-                LayerCount = 1
-            }
-        };
-
-        _vk.CmdPipelineBarrier(commandBuffer.ToVulkanCommandBuffer(), PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
-    }
-
-    public override unsafe void BeginRendering(CommandBuffer commandBuffer, int imageIndex)
-    {
-        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
-
-        RenderingAttachmentInfo colorAttachmentInfo = new()
-        {
-            SType = StructureType.RenderingAttachmentInfoKhr,
-            ImageView = _swapchainImageViews![imageIndex],
-            ImageLayout = Silk.NET.Vulkan.ImageLayout.AttachmentOptimalKhr,
-            LoadOp = AttachmentLoadOp.Clear,
-            StoreOp = AttachmentStoreOp.Store,
-            ClearValue = clearColor
-        };
-
-        RenderingInfo renderingInfo = new()
-        {
-            SType = StructureType.RenderingInfoKhr,
-            RenderArea = new()
-            {
-                Offset = new(0, 0),
-                Extent = _swapchainExtent
-            },
-            LayerCount = 1,
-            ColorAttachmentCount = 1,
-            PColorAttachments = &colorAttachmentInfo
-        };
-
-        _vk.CmdBeginRendering(commandBuffer.ToVulkanCommandBuffer(), ref renderingInfo);
-    }
-
-    public override void EndRendering(CommandBuffer commandBuffer)
-    {
-        _vk.CmdEndRendering(commandBuffer.ToVulkanCommandBuffer());
-    }
-
-    #region Instance
-
     private static unsafe string[] GetRequiredExtensions(Sdl sdlApi, IView view)
     {
         uint count = 0;
@@ -318,10 +145,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void DestroyInstance() => _vk.DestroyInstance(_instance, null);
 
-    #endregion
-
-    #region Validation Layers
-
 #if DEBUG
     private unsafe bool CheckValidationLayersSupport()
     {
@@ -375,9 +198,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private unsafe void DestroyDebugMessenger() => _extDebugUtils?.DestroyDebugUtilsMessenger(_instance, _debugMessenger, null);
 
 #endif
-    #endregion
-
-    #region Surface
 
     private unsafe void CreateSurface(Sdl sdlApi, IView view)
     {
@@ -391,10 +211,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     }
 
     private unsafe void DestroySurface() => _khrSurface!.DestroySurface(_instance, _surfaceKHR, null);
-
-    #endregion
-
-    #region Physical Device
 
     // TODO: add separate transfer and compute queues
     private unsafe QueueFamilyIndices FindQueueFamilies(PhysicalDevice physicalDevice)
@@ -529,10 +345,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             $"\tMemorySize: {(double)maxMemorySize / 1024 / 1024 / 1024:F3} Gib\n");
     }
 
-    #endregion
-
-    #region Logical Device
-
     private unsafe void CreateLogicalDevice()
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
@@ -594,9 +406,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void DestroyLogicalDevice() => _vk.DestroyDevice(_device, null);
 
-    #endregion
-
-    #region Swapchain
     private unsafe SwapchainSupportDetails QuerySwapChainSupport(PhysicalDevice physicalDevice)
     {
         var swapchainSupportDetails = new SwapchainSupportDetails();
@@ -793,10 +602,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
     }
 
-    #endregion
-
-    #region Command Pool
-
     private unsafe void CreateCommandPool()
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
@@ -833,10 +638,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             _vk.DestroyCommandPool(_device, x, null); return true;
         });
     }
-
-    #endregion
-
-    #region Synchronization Objects
 
     private unsafe void CreateSyncObjects()
     {
@@ -878,7 +679,119 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
     }
 
-    #endregion
+    public override void Create(Sdl sdlApi)
+    {
+        CreateInstance(sdlApi, _view);
+#if DEBUG
+        SetupDebugMessenger();
+#endif
+        CreateSurface(sdlApi, _view);
+        PickPhysicalDevice();
+        CreateLogicalDevice();
+        CreateSwapchain(_view);
+        CreateImageViews();
+        CreateCommandPool();
+        CreateSyncObjects();
+    }
+
+    protected override void DestroyInternal()
+    {
+        DestroySyncObjects();
+        DestroyCommandPools();
+
+        CleanupSwapchain();
+
+        DestroyLogicalDevice();
+        DestroySurface();
+#if DEBUG
+        DestroyDebugMessenger();
+#endif
+        DestroyInstance();
+    }
+
+    private unsafe void CleanupSwapchain()
+    {
+        DestroyImageViews();
+        DestroySwapchain();
+    }
+
+    // TODO: Recreate render passes
+    private void RecreateSwapchain()
+    {
+        WaitIdle();
+
+        CleanupSwapchain();
+
+        CreateSwapchain(_view);
+        CreateImageViews();
+    }
+
+    public override unsafe int BeginFrameInternal(int frameIndex)
+    {
+        _vk.WaitForFences(_device, 1, ref _inFlightFences![frameIndex], true, uint.MaxValue);
+
+        uint imageIndex = 0;
+        var result = _khrSwapchain!.AcquireNextImage(_device, _swapchain, uint.MaxValue, _imageAvailableSemaphores![frameIndex], default, &imageIndex);
+        if (result == Result.ErrorOutOfDateKhr)
+        {
+            RecreateSwapchain();
+            return -1;
+        }
+
+        VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
+
+        _vk.ResetFences(_device, 1, ref _inFlightFences![frameIndex]);
+        return (int)imageIndex;
+    }
+
+    public override unsafe void EndFrameInternal(CommandBuffer commandBuffer, int frameIndex, int imageIndex)
+    {
+        var waitSemaphores = stackalloc[] { _imageAvailableSemaphores![frameIndex] };
+        var waitStages = stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit };
+        var buffer = commandBuffer.ToVulkanCommandBuffer();
+        var signalSemaphores = stackalloc[] { _renderFinishedSemaphores![frameIndex] };
+
+        var submitInfo = new SubmitInfo()
+        {
+            SType = StructureType.SubmitInfo,
+            WaitSemaphoreCount = 1,
+            PWaitSemaphores = waitSemaphores,
+            PWaitDstStageMask = waitStages,
+            CommandBufferCount = 1,
+            PCommandBuffers = &buffer,
+            SignalSemaphoreCount = 1,
+            PSignalSemaphores = signalSemaphores
+        };
+
+        var result = _vk.QueueSubmit(_graphicsQueue, 1, ref submitInfo, _inFlightFences![frameIndex]);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
+
+        var swapchains = stackalloc[] { _swapchain };
+
+        PresentInfoKHR presentInfo = new()
+        {
+            SType = StructureType.PresentInfoKhr,
+            WaitSemaphoreCount = 1,
+            PWaitSemaphores = signalSemaphores,
+            SwapchainCount = 1,
+            PSwapchains = swapchains,
+            PImageIndices = (uint*)&imageIndex,
+        };
+
+        result = _khrSwapchain!.QueuePresent(_graphicsQueue, ref presentInfo);
+        if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
+        {
+            RecreateSwapchain();
+            return;
+        }
+
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't present image: {result}.");
+    }
+
+    public override unsafe void WaitIdle()
+    {
+        _vk.DeviceWaitIdle(_device);
+    }
 
     protected override unsafe CommandBuffer[] AllocateCommandBuffers(int frameIndex, int count)
     {
@@ -901,6 +814,63 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         var result = _vk.ResetCommandPool(_device, _commandPools[frameIndex], CommandPoolResetFlags.ReleaseResourcesBit);
         VulkanException.ThrowsIf(result != Result.Success, $"vkResetCommandPool failed: {result}.");
+    }
+
+    public override unsafe void ImageBarrier(CommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout)
+    {
+        ImageMemoryBarrier barrier = new()
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            OldLayout = oldLayout.ToVulkanImageLayout(),
+            NewLayout = newLayout.ToVulkanImageLayout(),
+            Image = _swapchainImages![imageIndex], // TODO: pass texture when implemented
+            SubresourceRange = new()
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _vk.CmdPipelineBarrier(commandBuffer.ToVulkanCommandBuffer(), PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
+    }
+
+    public override unsafe void BeginRendering(CommandBuffer commandBuffer, int imageIndex)
+    {
+        var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
+
+        RenderingAttachmentInfo colorAttachmentInfo = new()
+        {
+            SType = StructureType.RenderingAttachmentInfoKhr,
+            ImageView = _swapchainImageViews![imageIndex],
+            ImageLayout = Silk.NET.Vulkan.ImageLayout.AttachmentOptimalKhr,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            ClearValue = clearColor
+        };
+
+        RenderingInfo renderingInfo = new()
+        {
+            SType = StructureType.RenderingInfoKhr,
+            RenderArea = new()
+            {
+                Offset = new(0, 0),
+                Extent = _swapchainExtent
+            },
+            LayerCount = 1,
+            ColorAttachmentCount = 1,
+            PColorAttachments = &colorAttachmentInfo
+        };
+
+        _vk.CmdBeginRendering(commandBuffer.ToVulkanCommandBuffer(), ref renderingInfo);
+    }
+
+    public override void EndRendering(CommandBuffer commandBuffer)
+    {
+        _vk.CmdEndRendering(commandBuffer.ToVulkanCommandBuffer());
     }
 
     public override void BeginCommandBuffer(CommandBuffer commandBuffer)
