@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace YASV.RHI;
 
 public struct VertexInputBindingDesc
@@ -97,26 +94,38 @@ public struct ColorBlendState
     public float[] BlendConstants { get; set; }
 }
 
-public class DescriptorSetLayoutDesc
+public struct Sampler
 {
 }
 
-public class PushConstantRange
+public struct DescriptorSetLayoutBindingDesc
+{
+    public int Binding { get; set; }
+    public DescriptorType DescriptorType { get; set; }
+    public int DescriptorCount { get; set; }
+    public ShaderStage[] ShaderStages { get; set; }
+    public Sampler[]? Samplers { get; set; }
+}
+
+public struct DescriptorSetLayoutDesc
+{
+    public DescriptorSetLayoutBindingDesc[]? Bindings { get; set; }
+}
+
+public struct PushConstantRange
 {
 }
 
 // TODO: https://vkguide.dev/docs/extra-chapter/abstracting_descriptors/
-public class GraphicsPipelineLayoutDesc
+public struct GraphicsPipelineLayoutDesc
 {
-    public int SetLayoutCount { get; set; }
     public DescriptorSetLayoutDesc[]? SetLayouts { get; set; }
-    public int PushConstantRangeCount { get; set; }
     public PushConstantRange[]? PushConstantRanges { get; set; }
 }
 
 public class GraphicsPipelineLayout { }
 
-public class GraphicsPipelineDesc(Shader[] shaders,
+public struct GraphicsPipelineDesc(Shader[] shaders,
                               VertexInputState vertexInputState,
                               InputAssemblyState inputAssemblyState,
                               RasterizationState rasterizationState,

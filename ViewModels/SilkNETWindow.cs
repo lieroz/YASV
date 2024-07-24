@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using Avalonia.Controls;
 using Avalonia.Platform;
@@ -74,7 +73,7 @@ public class SilkNETWindow : NativeControlHost, IDisposable
                 {
                     action();
                 }
-                CurrentScene?.DrawScene();
+                CurrentScene?.DrawScene(_window.Size.X, _window.Size.Y);
             });
         })
         {

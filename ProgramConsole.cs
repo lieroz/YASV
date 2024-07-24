@@ -48,7 +48,7 @@ internal sealed class ProgramConsole
 
         window.Render += (double delta) =>
         {
-            scene.DrawScene();
+            scene.DrawScene(window.Size.X, window.Size.Y);
         };
 
         window.Run();

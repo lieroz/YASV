@@ -1,8 +1,24 @@
-using System;
-
 namespace YASV.RHI;
 
-internal class VulkanBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : Buffer(size)
+internal class VulkanVertexBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : VertexBuffer(size)
+{
+    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+}
+
+internal class VulkanIndexBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : IndexBuffer(size)
+{
+    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+}
+
+internal class VulkanConstantBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : ConstantBuffer(size)
+{
+    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+}
+
+internal class VulkanStagingBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : StagingBuffer(size)
 {
     public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
     public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
@@ -10,54 +26,24 @@ internal class VulkanBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk
 
 internal static class BufferVulkanExtensions
 {
-    internal static VulkanBufferWrapper ToVulkanBuffer(this Buffer buffer)
+    internal static VulkanVertexBufferWrapper ToVulkanVertexBuffer(this VertexBuffer buffer)
     {
-        return (VulkanBufferWrapper)buffer;
+        return (VulkanVertexBufferWrapper)buffer;
     }
 
-    internal static Silk.NET.Vulkan.BufferUsageFlags ToVulkanBufferUsageFlags(this BufferUsage usage)
+    internal static VulkanIndexBufferWrapper ToVulkanIndexBuffer(this IndexBuffer buffer)
     {
-        return usage switch
-        {
-            BufferUsage.None => Silk.NET.Vulkan.BufferUsageFlags.None,
-            BufferUsage.TransferSrc => Silk.NET.Vulkan.BufferUsageFlags.TransferSrcBit,
-            BufferUsage.TransferDst => Silk.NET.Vulkan.BufferUsageFlags.TransferDstBit,
-            BufferUsage.UniformTexel => Silk.NET.Vulkan.BufferUsageFlags.UniformTexelBufferBit,
-            BufferUsage.StorageTexel => Silk.NET.Vulkan.BufferUsageFlags.StorageTexelBufferBit,
-            BufferUsage.Uniform => Silk.NET.Vulkan.BufferUsageFlags.UniformBufferBit,
-            BufferUsage.Storage => Silk.NET.Vulkan.BufferUsageFlags.StorageBufferBit,
-            BufferUsage.Index => Silk.NET.Vulkan.BufferUsageFlags.IndexBufferBit,
-            BufferUsage.Vertex => Silk.NET.Vulkan.BufferUsageFlags.VertexBufferBit,
-            BufferUsage.Indirect => Silk.NET.Vulkan.BufferUsageFlags.IndirectBufferBit,
-            _ => throw new NotSupportedException($"Buffer usage '{usage}' is not supported.")
-        };
+        return (VulkanIndexBufferWrapper)buffer;
     }
 
-    internal static Silk.NET.Vulkan.SharingMode ToVulkanSharingMode(this SharingMode mode)
+    internal static VulkanConstantBufferWrapper ToVulkanConstantBuffer(this ConstantBuffer buffer)
     {
-        return mode switch
-        {
-            SharingMode.Exclusive => Silk.NET.Vulkan.SharingMode.Exclusive,
-            SharingMode.Concurrent => Silk.NET.Vulkan.SharingMode.Concurrent,
-            _ => throw new NotSupportedException($"Sharing mode '{mode}' is not supported.")
-        };
+        return (VulkanConstantBufferWrapper)buffer;
     }
 
-    internal static Silk.NET.Vulkan.BufferCreateInfo ToVulkanBuffer(this BufferDesc desc)
+    internal static VulkanStagingBufferWrapper ToVulkanStagingBuffer(this StagingBuffer buffer)
     {
-        var vkUsage = Silk.NET.Vulkan.BufferUsageFlags.None;
-        foreach (var usage in desc.Usages)
-        {
-            vkUsage |= usage.ToVulkanBufferUsageFlags();
-        }
-
-        return new()
-        {
-            SType = Silk.NET.Vulkan.StructureType.BufferCreateInfo,
-            Size = (ulong)desc.Size,
-            Usage = vkUsage,
-            SharingMode = desc.SharingMode.ToVulkanSharingMode()
-        };
+        return (VulkanStagingBufferWrapper)buffer;
     }
 
     internal static Silk.NET.Vulkan.IndexType ToVulkanIndexType(this IndexType indexType)

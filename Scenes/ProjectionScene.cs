@@ -5,13 +5,22 @@ using YASV.RHI;
 namespace YASV.Scenes;
 
 [Scene]
-public class RectangleScene : BaseScene
+public class ProjectionScene : BaseScene
 {
-    private readonly GraphicsPipelineLayout _rectangleGraphicsPipelineLayout;
-    private readonly GraphicsPipelineDesc _rectangleGraphicsPipelineDesc;
-    private readonly GraphicsPipeline _rectangleGraphicsPipeline;
-    private readonly VertexBuffer _rectangleVertexBuffer;
-    private readonly IndexBuffer _rectangleIndexBuffer;
+    private static class MathHelper
+    {
+        public static float DegreesToRadians(float degrees)
+        {
+            return System.MathF.PI / 180f * degrees;
+        }
+    }
+
+    private readonly GraphicsPipelineLayout _projectionGraphicsPipelineLayout;
+    private readonly GraphicsPipelineDesc _projectionGraphicsPipelineDesc;
+    private readonly GraphicsPipeline _projectionGraphicsPipeline;
+    private readonly VertexBuffer _projectionVertexBuffer;
+    private readonly IndexBuffer _projectionIndexBuffer;
+    private readonly ConstantBuffer[] _projectionConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
 
     private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
     {
@@ -59,7 +68,7 @@ public class RectangleScene : BaseScene
             }
         }
 
-        public byte[] Bytes
+        public readonly byte[] Bytes
         {
             get
             {
@@ -83,16 +92,55 @@ public class RectangleScene : BaseScene
         new(new(-0.5f, 0.5f), new(1.0f, 1.0f, 1.0f))
     ];
 
+    // TODO: generate UBO types?
+    [StructLayout(LayoutKind.Explicit)]
+    private struct UniformBufferObject
+    {
+        [FieldOffset(0)] private Matrix4X4<float> _model;
+        [FieldOffset(64)] private Matrix4X4<float> _view;
+        [FieldOffset(128)] private Matrix4X4<float> _projection;
+
+        public Matrix4X4<float> Model { readonly get => _model; set => _model = value; }
+        public Matrix4X4<float> View { readonly get => _view; set => _view = value; }
+        public Matrix4X4<float> Projection { readonly get => _projection; set => _projection = value; }
+
+        public readonly byte[] Bytes
+        {
+            get
+            {
+                // TODO: How to optimize this?
+                var bytes = new byte[sizeof(float) * 4 * 4 * 3];
+                {
+                    var rows = new float[4 * 4 * 3];
+                    _model.Row1.CopyTo(rows, 0);
+                    _model.Row2.CopyTo(rows, 4);
+                    _model.Row3.CopyTo(rows, 8);
+                    _model.Row4.CopyTo(rows, 12);
+                    _view.Row1.CopyTo(rows, 16);
+                    _view.Row2.CopyTo(rows, 20);
+                    _view.Row3.CopyTo(rows, 24);
+                    _view.Row4.CopyTo(rows, 28);
+                    _projection.Row1.CopyTo(rows, 32);
+                    _projection.Row2.CopyTo(rows, 36);
+                    _projection.Row3.CopyTo(rows, 40);
+                    _projection.Row4.CopyTo(rows, 44);
+                    System.Buffer.BlockCopy(rows, 0, bytes, 0, bytes.Length);
+                }
+                return bytes;
+            }
+        }
+    }
+
     private readonly short[] _indices = [0, 1, 2, 2, 3, 0];
 
-    public RectangleScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
+    public ProjectionScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
     {
         _graphicsDevice = graphicsDevice;
 
         var vertexShader = _graphicsDevice.CreateShader("Shaders/triangle.vert.hlsl", ShaderStage.Vertex);
         var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", ShaderStage.Pixel);
 
-        _rectangleGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
+        _projectionGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
             .SetVertexShader(vertexShader)
             .SetPixelShader(fragmentShader)
             .SetVertexInputState(new()
@@ -143,18 +191,26 @@ public class RectangleScene : BaseScene
             })
             .Build();
 
-        _rectangleGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
+        _projectionGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
         {
-            SetLayouts = null,
+            SetLayouts = [new() { Bindings = [
+                new() {
+                    Binding = 0,
+                    DescriptorType = DescriptorType.UniformBuffer,
+                    DescriptorCount = 1,
+                    ShaderStages = [ShaderStage.Vertex],
+                    Samplers = null
+                }]
+            }],
             PushConstantRanges = null
         });
-        _rectangleGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_rectangleGraphicsPipelineDesc, _rectangleGraphicsPipelineLayout);
+        _projectionGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_projectionGraphicsPipelineDesc, _projectionGraphicsPipelineLayout);
 
         int vertexBufferSize = Marshal.SizeOf<Vertex>() * _vertices.Length;
-        _rectangleVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
+        _projectionVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
 
         int indexBufferSize = sizeof(short) * _indices.Length;
-        _rectangleIndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
+        _projectionIndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
 
         var vertexData = new byte[Marshal.SizeOf<Vertex>() * _vertices.Length];
         for (int i = 0; i < _vertices.Length; i++)
@@ -165,17 +221,27 @@ public class RectangleScene : BaseScene
         var indexData = new byte[sizeof(short) * _indices.Length];
         System.Buffer.BlockCopy(_indices, 0, indexData, 0, indexData.Length);
 
-        _graphicsDevice.CopyDataToVertexBuffer(_rectangleVertexBuffer, vertexData);
-        _graphicsDevice.CopyDataToIndexBuffer(_rectangleIndexBuffer, indexData);
+        _graphicsDevice.CopyDataToVertexBuffer(_projectionVertexBuffer, vertexData);
+        _graphicsDevice.CopyDataToIndexBuffer(_projectionIndexBuffer, indexData);
+
+        for (int i = 0; i < _projectionConstantBuffers.Length; i++)
+        {
+            _projectionConstantBuffers[i] = graphicsDevice.CreateConstantBuffer(Marshal.SizeOf<UniformBufferObject>());
+        }
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
 
         DisposeUnmanaged += () =>
         {
-            _graphicsDevice.DestroyGraphicsPipelines([_rectangleGraphicsPipeline]);
-            _graphicsDevice.DestroyGraphicsPipelineLayouts([_rectangleGraphicsPipelineLayout]);
-            _graphicsDevice.DestroyVertexBuffer(_rectangleVertexBuffer);
-            _graphicsDevice.DestroyIndexBuffer(_rectangleIndexBuffer);
+            _graphicsDevice.DestroyGraphicsPipelines([_projectionGraphicsPipeline]);
+            _graphicsDevice.DestroyGraphicsPipelineLayouts([_projectionGraphicsPipelineLayout]);
+            _graphicsDevice.DestroyVertexBuffer(_projectionVertexBuffer);
+            _graphicsDevice.DestroyIndexBuffer(_projectionIndexBuffer);
+
+            foreach (var constantBuffer in _projectionConstantBuffers)
+            {
+                _graphicsDevice.DestroyConstantBuffer(constantBuffer);
+            }
         };
     }
 
@@ -187,11 +253,19 @@ public class RectangleScene : BaseScene
 
             _graphicsDevice.BeginRendering(commandBuffer, imageIndex);
             {
-                _graphicsDevice.BindGraphicsPipeline(commandBuffer, _rectangleGraphicsPipeline);
+                _graphicsDevice.BindGraphicsPipeline(commandBuffer, _projectionGraphicsPipeline);
+
+                var ubo = new UniformBufferObject()
+                {
+                    Model = Matrix4X4.CreateRotationZ(MathHelper.DegreesToRadians(90.0f)),
+                    View = Matrix4X4.CreateLookAt<float>(new(2.0f, 2.0f, 2.0f), new(0.0f, 0.0f, 0.0f), new(0.0f, 0.0f, 1.0f)),
+                    Projection = Matrix4X4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(45.0f), width / height, 0.1f, 10.0f)
+                };
+                _graphicsDevice.CopyDataToConstantBuffer(_projectionConstantBuffers[_currentFrame % Constants.MaxFramesInFlight], ubo.Bytes);
 
                 _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
-                _graphicsDevice.BindVertexBuffers(commandBuffer, [_rectangleVertexBuffer]);
-                _graphicsDevice.BindIndexBuffer(commandBuffer, _rectangleIndexBuffer, IndexType.Uint16);
+                _graphicsDevice.BindVertexBuffers(commandBuffer, [_projectionVertexBuffer]);
+                _graphicsDevice.BindIndexBuffer(commandBuffer, _projectionIndexBuffer, IndexType.Uint16);
                 _graphicsDevice.DrawIndexed(commandBuffer, (uint)_indices.Length, 1, 0, 0, 0);
             }
 

@@ -1,6 +1,3 @@
-using System;
-using System.Linq;
-
 namespace YASV.RHI;
 
 internal class VulkanGraphicsPipelineWrapper(Silk.NET.Vulkan.Pipeline pipeline) : GraphicsPipeline
@@ -443,5 +440,85 @@ internal static class GraphicsPipelineVulkanExtensions
     internal static Silk.NET.Vulkan.PipelineLayout ToVulkanGraphicsPipelineLayout(this GraphicsPipelineLayout layout)
     {
         return ((VulkanGraphicsPipelineLayoutWrapper)layout).PipelineLayout;
+    }
+
+    internal static Silk.NET.Vulkan.DescriptorType ToVulkanDescriptorType(this DescriptorType type)
+    {
+        return type switch
+        {
+            DescriptorType.Sampler => Silk.NET.Vulkan.DescriptorType.Sampler,
+            DescriptorType.CombinedImageSampler => Silk.NET.Vulkan.DescriptorType.CombinedImageSampler,
+            DescriptorType.SampledImage => Silk.NET.Vulkan.DescriptorType.SampledImage,
+            DescriptorType.StorageImage => Silk.NET.Vulkan.DescriptorType.StorageImage,
+            DescriptorType.UniformTexelBuffer => Silk.NET.Vulkan.DescriptorType.UniformTexelBuffer,
+            DescriptorType.StorageTexelBuffer => Silk.NET.Vulkan.DescriptorType.StorageTexelBuffer,
+            DescriptorType.UniformBuffer => Silk.NET.Vulkan.DescriptorType.UniformBuffer,
+            DescriptorType.StorageBuffer => Silk.NET.Vulkan.DescriptorType.StorageBuffer,
+            DescriptorType.UniformBufferDynamic => Silk.NET.Vulkan.DescriptorType.UniformBufferDynamic,
+            DescriptorType.StorageBufferDynamic => Silk.NET.Vulkan.DescriptorType.StorageBufferDynamic,
+            DescriptorType.InputAttachment => Silk.NET.Vulkan.DescriptorType.InputAttachment,
+            _ => throw new NotSupportedException($"Descriptor type 'type' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.Sampler ToVulkanSampler(this Sampler sampler)
+    {
+        // TODO:
+        return new();
+    }
+
+    internal static unsafe Silk.NET.Vulkan.DescriptorSetLayoutBinding ToVulkanDescriptorSetLayoutBinding(this DescriptorSetLayoutBindingDesc layoutBinding)
+    {
+        Silk.NET.Vulkan.ShaderStageFlags shaderStageFlags = Silk.NET.Vulkan.ShaderStageFlags.None;
+        foreach (var shaderStage in layoutBinding.ShaderStages)
+        {
+            shaderStageFlags |= shaderStage.ToVulkanShaderStage();
+        }
+
+        Silk.NET.Vulkan.Sampler[]? vkSamplers = null;
+        if (layoutBinding.Samplers != null)
+        {
+            vkSamplers = new Silk.NET.Vulkan.Sampler[layoutBinding.Samplers.Length];
+            for (int i = 0; i < layoutBinding.Samplers.Length; i++)
+            {
+                vkSamplers[i] = layoutBinding.Samplers[i].ToVulkanSampler(); // FIXME
+            }
+        }
+
+        fixed (Silk.NET.Vulkan.Sampler* vkSamplersPtr = vkSamplers)
+        {
+            return new()
+            {
+                Binding = (uint)layoutBinding.Binding,
+                DescriptorType = layoutBinding.DescriptorType.ToVulkanDescriptorType(),
+                DescriptorCount = (uint)layoutBinding.DescriptorCount,
+                StageFlags = shaderStageFlags,
+                PImmutableSamplers = vkSamplersPtr
+            };
+        }
+    }
+
+    internal static unsafe Silk.NET.Vulkan.DescriptorSetLayoutCreateInfo ToVulkanDescriptorSetLayout(this DescriptorSetLayoutDesc layout)
+    {
+        Silk.NET.Vulkan.DescriptorSetLayoutBinding[]? vkBindings = null;
+        if (layout.Bindings != null)
+        {
+            vkBindings = new Silk.NET.Vulkan.DescriptorSetLayoutBinding[layout.Bindings.Length];
+            for (int i = 0; i < layout.Bindings.Length; i++)
+            {
+                vkBindings[i] = layout.Bindings[i].ToVulkanDescriptorSetLayoutBinding();
+            }
+        }
+
+        fixed (Silk.NET.Vulkan.DescriptorSetLayoutBinding* vkBindingsPtr = vkBindings)
+        {
+            return new()
+            {
+                SType = Silk.NET.Vulkan.StructureType.DescriptorSetLayoutCreateInfo,
+                Flags = Silk.NET.Vulkan.DescriptorSetLayoutCreateFlags.None, // TODO: move to abstraction
+                BindingCount = layout.Bindings == null ? 0 : (uint)layout.Bindings.Length,
+                PBindings = vkBindingsPtr
+            };
+        }
     }
 }

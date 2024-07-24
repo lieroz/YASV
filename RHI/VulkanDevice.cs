@@ -1,7 +1,4 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Silk.NET.Core;
 using Silk.NET.Core.Native;
@@ -74,7 +71,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Silk.NET.Vulkan.Semaphore[]? _imageAvailableSemaphores;
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
-    private readonly ConcurrentBag<CommandBuffer> _transferCommandBufferPool = [];
+    private readonly ConcurrentBag<Silk.NET.Vulkan.CommandBuffer> _transferCommandBufferPool = [];
 
     public override void Create(Sdl sdlApi)
     {
@@ -128,9 +125,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateImageViews();
     }
 
-    public override unsafe int BeginFrame(int currentFrame)
+    public override unsafe int BeginFrameInternal(int frameIndex)
     {
-        var frameIndex = currentFrame % Constants.MaxFramesInFlight;
         _vk.WaitForFences(_device, 1, ref _inFlightFences![frameIndex], true, uint.MaxValue);
 
         uint imageIndex = 0;
@@ -147,9 +143,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return (int)imageIndex;
     }
 
-    public override unsafe void EndFrame(ICommandBuffer commandBuffer, int currentFrame, int imageIndex)
+    public override unsafe void EndFrameInternal(CommandBuffer commandBuffer, int frameIndex, int imageIndex)
     {
-        var frameIndex = currentFrame % Constants.MaxFramesInFlight;
         var waitSemaphores = stackalloc[] { _imageAvailableSemaphores![frameIndex] };
         var waitStages = stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit };
         var buffer = commandBuffer.ToVulkanCommandBuffer();
@@ -192,7 +187,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't present image: {result}.");
     }
 
-    public override unsafe void ImageBarrier(ICommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout)
+    public override unsafe void ImageBarrier(CommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout)
     {
         ImageMemoryBarrier barrier = new()
         {
@@ -214,7 +209,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdPipelineBarrier(commandBuffer.ToVulkanCommandBuffer(), PipelineStageFlags.ColorAttachmentOutputBit, PipelineStageFlags.BottomOfPipeBit, 0, 0, null, 0, null, 1, &barrier);
     }
 
-    public override unsafe void BeginRendering(ICommandBuffer commandBuffer, int imageIndex)
+    public override unsafe void BeginRendering(CommandBuffer commandBuffer, int imageIndex)
     {
         var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
 
@@ -244,7 +239,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdBeginRendering(commandBuffer.ToVulkanCommandBuffer(), ref renderingInfo);
     }
 
-    public override void EndRendering(ICommandBuffer commandBuffer)
+    public override void EndRendering(CommandBuffer commandBuffer)
     {
         _vk.CmdEndRendering(commandBuffer.ToVulkanCommandBuffer());
     }
@@ -885,13 +880,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     #endregion
 
-    protected override unsafe ICommandBuffer[] AllocateCommandBuffers(int index, int count)
+    protected override unsafe CommandBuffer[] AllocateCommandBuffers(int frameIndex, int count)
     {
-        var commandBuffers = new CommandBuffer[count];
+        var commandBuffers = new Silk.NET.Vulkan.CommandBuffer[count];
         var allocateInfo = new CommandBufferAllocateInfo()
         {
             SType = StructureType.CommandBufferAllocateInfo,
-            CommandPool = _commandPools[index],
+            CommandPool = _commandPools[frameIndex],
             Level = CommandBufferLevel.Primary,
             CommandBufferCount = (uint)count
         };
@@ -902,13 +897,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return commandBuffers.Select(x => new VulkanCommandBufferWrapper(x)).ToArray();
     }
 
-    protected override void ResetCommandBuffers(int index)
+    protected override void ResetCommandBuffers(int frameIndex)
     {
-        var result = _vk.ResetCommandPool(_device, _commandPools[index], CommandPoolResetFlags.ReleaseResourcesBit);
+        var result = _vk.ResetCommandPool(_device, _commandPools[frameIndex], CommandPoolResetFlags.ReleaseResourcesBit);
         VulkanException.ThrowsIf(result != Result.Success, $"vkResetCommandPool failed: {result}.");
     }
 
-    public override void BeginCommandBuffer(ICommandBuffer commandBuffer)
+    public override void BeginCommandBuffer(CommandBuffer commandBuffer)
     {
         CommandBufferBeginInfo beginInfo = new()
         {
@@ -920,13 +915,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
     }
 
-    public override void EndCommandBuffer(ICommandBuffer commandBuffer)
+    public override void EndCommandBuffer(CommandBuffer commandBuffer)
     {
         var result = _vk.EndCommandBuffer(commandBuffer.ToVulkanCommandBuffer());
         VulkanException.ThrowsIf(result != Result.Success, $"vkEndCommandBuffer failed: {result}.");
     }
 
-    public override void SetDefaultViewportAndScissor(ICommandBuffer commandBuffer)
+    public override void SetDefaultViewportAndScissor(CommandBuffer commandBuffer)
     {
         var viewport = new Silk.NET.Vulkan.Viewport()
         {
@@ -947,44 +942,65 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);
     }
 
-    public override void SetViewports(ICommandBuffer commandBuffer, int firstViewport, Viewport[] viewports)
+    public override void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports)
     {
         var vkViewports = viewports.Select(v => new Silk.NET.Vulkan.Viewport(v.X, v.Y, v.Width, v.Height, v.MinDepth, v.MaxDepth)).ToArray();
         _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), (uint)firstViewport, (uint)viewports.Length, vkViewports);
     }
 
-    public override void SetScissors(ICommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors)
+    public override void SetScissors(CommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors)
     {
         var vkScissors = scissors.Select(v => new Silk.NET.Vulkan.Rect2D(new(v.X, v.Y), new((uint)v.Width, (uint)v.Height))).ToArray();
         _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), (uint)firstScissor, (uint)scissors.Length, vkScissors);
     }
 
-    public override void Draw(ICommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
+    public override void Draw(CommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
     {
         _vk.CmdDraw(commandBuffer.ToVulkanCommandBuffer(), vertexCount, instanceCount, firstVertex, firstInstance);
     }
 
-    public override void DrawIndexed(ICommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance)
+    public override void DrawIndexed(CommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance)
     {
         _vk.CmdDrawIndexed(commandBuffer.ToVulkanCommandBuffer(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 
+    // TODO: move to vulkan graphics extensions
     public override unsafe GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc)
     {
-        // TODO: Implement pipeline layout
-        PipelineLayoutCreateInfo pipelineLayout = new()
+        Result result = Result.Success;
+
+        DescriptorSetLayout[]? setLayouts = null;
+        if (desc.SetLayouts != null)
         {
-            SType = StructureType.PipelineLayoutCreateInfo,
-            SetLayoutCount = (uint)desc.SetLayoutCount,
-            PSetLayouts = null,
-            PushConstantRangeCount = (uint)desc.PushConstantRangeCount,
-            PPushConstantRanges = null
-        };
+            setLayouts = new DescriptorSetLayout[desc.SetLayouts.Length];
+            for (int i = 0; i < desc.SetLayouts.Length; i++)
+            {
+                // TODO: move to cache
+                var createInfo = desc.SetLayouts[i].ToVulkanDescriptorSetLayout();
+                result = _vk.CreateDescriptorSetLayout(_device, &createInfo, null, out var setLayout);
+                VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create descriptor set layout: {result}.");
 
-        var result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out var layout);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
+                setLayouts[i] = setLayout;
+            }
+        }
 
-        return new VulkanGraphicsPipelineLayoutWrapper(layout);
+        // TODO: Implement push constant ranges
+        fixed (DescriptorSetLayout* setLayoutsPtr = setLayouts)
+        {
+            PipelineLayoutCreateInfo pipelineLayout = new()
+            {
+                SType = StructureType.PipelineLayoutCreateInfo,
+                SetLayoutCount = desc.SetLayouts == null ? 0 : (uint)desc.SetLayouts.Length,
+                PSetLayouts = setLayoutsPtr,
+                PushConstantRangeCount = desc.PushConstantRanges == null ? 0 : (uint)desc.PushConstantRanges.Length,
+                PPushConstantRanges = null
+            };
+
+            result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out var layout);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
+
+            return new VulkanGraphicsPipelineLayoutWrapper(layout);
+        }
     }
 
     public override unsafe void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts)
@@ -1099,7 +1115,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
     }
 
-    public override void BindGraphicsPipeline(ICommandBuffer commandBuffer, GraphicsPipeline graphicsPipeline)
+    public override void BindGraphicsPipeline(CommandBuffer commandBuffer, GraphicsPipeline graphicsPipeline)
     {
         _vk.CmdBindPipeline(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, graphicsPipeline.ToVulkanGraphicsPipeline());
     }
@@ -1148,10 +1164,17 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     }
 
     // TODO: should destroy previous steps if fail?
-    private unsafe Buffer CreateBufferInternal(BufferDesc desc, MemoryPropertyFlags memoryPropertyFlags)
+    private unsafe Tuple<Silk.NET.Vulkan.Buffer, DeviceMemory> CreateBufferInternal(int size, BufferUsageFlags usageFlags, SharingMode sharingMode, MemoryPropertyFlags memoryFlags)
     {
-        var vkBufferCreateInfo = desc.ToVulkanBuffer();
-        var result = _vk.CreateBuffer(_device, ref vkBufferCreateInfo, null, out var vkBuffer);
+        var createInfo = new BufferCreateInfo()
+        {
+            SType = StructureType.BufferCreateInfo,
+            Size = (uint)size,
+            Usage = usageFlags,
+            SharingMode = sharingMode
+        };
+
+        var result = _vk.CreateBuffer(_device, ref createInfo, null, out var vkBuffer);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create buffer: {result}.");
 
         var memoryRequirements = _vk.GetBufferMemoryRequirements(_device, vkBuffer);
@@ -1159,7 +1182,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         {
             SType = StructureType.MemoryAllocateInfo,
             AllocationSize = memoryRequirements.Size,
-            MemoryTypeIndex = (uint)FindMemoryType(memoryRequirements.MemoryTypeBits, memoryPropertyFlags)
+            MemoryTypeIndex = (uint)FindMemoryType(memoryRequirements.MemoryTypeBits, memoryFlags)
         };
 
         result = _vk.AllocateMemory(_device, ref memoryAllocateInfo, null, out var vkBufferMemory);
@@ -1168,32 +1191,64 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         result = _vk.BindBufferMemory(_device, vkBuffer, vkBufferMemory, 0);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't bind memory for buffer: {result}.");
 
-        return new VulkanBufferWrapper(desc.Size, vkBuffer, vkBufferMemory);
+        return new(vkBuffer, vkBufferMemory);
     }
 
-    protected override Buffer CreateVertexBufferInternal(BufferDesc desc)
+    public override VertexBuffer CreateVertexBuffer(int size)
     {
-        return CreateBufferInternal(desc, MemoryPropertyFlags.DeviceLocalBit);
+        var (vkBuffer, vkBufferMemory) = CreateBufferInternal(size, BufferUsageFlags.VertexBufferBit | BufferUsageFlags.TransferDstBit, SharingMode.Exclusive, MemoryPropertyFlags.DeviceLocalBit);
+        return new VulkanVertexBufferWrapper(size, vkBuffer, vkBufferMemory);
     }
 
-    protected override Buffer CreateIndexBufferInternal(BufferDesc desc)
+    public override IndexBuffer CreateIndexBuffer(int size)
     {
-        return CreateBufferInternal(desc, MemoryPropertyFlags.DeviceLocalBit);
+        var (vkBuffer, vkBufferMemory) = CreateBufferInternal(size, BufferUsageFlags.IndexBufferBit | BufferUsageFlags.TransferDstBit, SharingMode.Exclusive, MemoryPropertyFlags.DeviceLocalBit);
+        return new VulkanIndexBufferWrapper(size, vkBuffer, vkBufferMemory);
     }
 
-    public override Buffer CreateStagingBuffer(BufferDesc desc)
+    public override ConstantBuffer CreateConstantBuffer(int size)
     {
-        return CreateBufferInternal(desc, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
+        var (vkBuffer, vkBufferMemory) = CreateBufferInternal(size, BufferUsageFlags.UniformBufferBit, SharingMode.Exclusive, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
+        return new VulkanConstantBufferWrapper(size, vkBuffer, vkBufferMemory);
     }
 
-    public override unsafe void DestroyBuffer(Buffer buffer)
+    protected override StagingBuffer CreateStagingBuffer(int size)
     {
-        var vkBufferWrapper = buffer.ToVulkanBuffer();
-        _vk.DestroyBuffer(_device, vkBufferWrapper.Buffer, null);
-        _vk.FreeMemory(_device, vkBufferWrapper.DeviceMemory, null);
+        var (vkBuffer, vkBufferMemory) = CreateBufferInternal(size, BufferUsageFlags.TransferSrcBit, SharingMode.Exclusive, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
+        return new VulkanStagingBufferWrapper(size, vkBuffer, vkBufferMemory);
     }
 
-    private CommandBuffer GetTransferCommandBuffer()
+    private unsafe void DestroyBufferInternal(Silk.NET.Vulkan.Buffer buffer, DeviceMemory deviceMemory)
+    {
+        _vk.DestroyBuffer(_device, buffer, null);
+        _vk.FreeMemory(_device, deviceMemory, null);
+    }
+
+    public override void DestroyVertexBuffer(VertexBuffer buffer)
+    {
+        var vkBufferWrapper = buffer.ToVulkanVertexBuffer();
+        DestroyBufferInternal(vkBufferWrapper.Buffer, vkBufferWrapper.DeviceMemory);
+    }
+
+    public override void DestroyIndexBuffer(IndexBuffer buffer)
+    {
+        var vkBufferWrapper = buffer.ToVulkanIndexBuffer();
+        DestroyBufferInternal(vkBufferWrapper.Buffer, vkBufferWrapper.DeviceMemory);
+    }
+
+    public override void DestroyConstantBuffer(ConstantBuffer buffer)
+    {
+        var vkBufferWrapper = buffer.ToVulkanConstantBuffer();
+        DestroyBufferInternal(vkBufferWrapper.Buffer, vkBufferWrapper.DeviceMemory);
+    }
+
+    protected override void DestroyStagingBuffer(StagingBuffer buffer)
+    {
+        var vkBufferWrapper = buffer.ToVulkanStagingBuffer();
+        DestroyBufferInternal(vkBufferWrapper.Buffer, vkBufferWrapper.DeviceMemory);
+    }
+
+    private Silk.NET.Vulkan.CommandBuffer GetTransferCommandBuffer()
     {
         if (_transferCommandBufferPool.TryTake(out var commandBuffer))
         {
@@ -1205,7 +1260,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             SType = StructureType.CommandBufferAllocateInfo,
             Level = CommandBufferLevel.Primary,
             CommandPool = _transferCommandPool,
-            CommandBufferCount = PreallocatedBuffersCount
+            CommandBufferCount = Constants.PreallocatedBuffersCount
         };
 
         var result = _vk.AllocateCommandBuffers(_device, ref allocInfo, out commandBuffer);
@@ -1214,16 +1269,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return commandBuffer;
     }
 
-    private void ReturnTransferCommandBuffer(CommandBuffer commandBuffer)
+    private void ReturnTransferCommandBuffer(Silk.NET.Vulkan.CommandBuffer commandBuffer)
     {
         _transferCommandBufferPool.Add(commandBuffer);
     }
 
-    private unsafe void CopyBufferInternal(Buffer srcBuffer, Buffer dstBuffer, int frameIndex)
+    private unsafe void CopyBufferInternal(Silk.NET.Vulkan.Buffer srcBuffer, Silk.NET.Vulkan.Buffer dstBuffer, int size)
     {
-        var vkSrcBuffer = srcBuffer.ToVulkanBuffer();
-        var vkDstBuffer = dstBuffer.ToVulkanBuffer();
-
         var commandBuffer = GetTransferCommandBuffer();
 
         var beginInfo = new CommandBufferBeginInfo()
@@ -1239,10 +1291,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         {
             SrcOffset = 0,
             DstOffset = 0,
-            Size = (ulong)vkDstBuffer.Size
+            Size = (ulong)size
         };
 
-        _vk.CmdCopyBuffer(commandBuffer, vkSrcBuffer.Buffer, vkDstBuffer.Buffer, [copyRegion]);
+        _vk.CmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, [copyRegion]);
         _vk.EndCommandBuffer(commandBuffer);
 
         var submitInfo = new SubmitInfo()
@@ -1261,12 +1313,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
     }
 
-    public override unsafe void CopyDataToBuffer(Buffer buffer, byte[] data, int currentFrame)
+    private unsafe void CopyDataToDeviceLocalBuffer(Silk.NET.Vulkan.Buffer dstBuffer, byte[] data, int size)
     {
-        var frameIndex = currentFrame % Constants.MaxFramesInFlight;
-
-        var stagingBuffer = GetStagingBuffer(buffer.Size);
-        var vkStagingBuffer = stagingBuffer.ToVulkanBuffer();
+        var stagingBuffer = GetStagingBuffer(size);
+        var vkStagingBuffer = stagingBuffer.ToVulkanStagingBuffer();
 
         void* mappedMemory = null;
         var result = _vk.MapMemory(_device, vkStagingBuffer.DeviceMemory, 0, (ulong)stagingBuffer.Size, 0, ref mappedMemory);
@@ -1275,14 +1325,38 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         Marshal.Copy(data, 0, (nint)mappedMemory, data.Length);
         _vk.UnmapMemory(_device, vkStagingBuffer.DeviceMemory);
 
-        CopyBufferInternal(stagingBuffer, buffer, frameIndex);
+        CopyBufferInternal(vkStagingBuffer.Buffer, dstBuffer, size);
 
         ReturnStagingBuffer(stagingBuffer);
     }
 
-    public override unsafe void BindVertexBuffers(ICommandBuffer commandBuffer, Buffer[] buffers)
+    public override unsafe void CopyDataToVertexBuffer(VertexBuffer buffer, byte[] data)
     {
-        var vkBuffers = buffers.Select(x => x.ToVulkanBuffer().Buffer).ToArray();
+        var vkBuffer = buffer.ToVulkanVertexBuffer();
+        CopyDataToDeviceLocalBuffer(vkBuffer.Buffer, data, buffer.Size);
+    }
+
+    public override unsafe void CopyDataToIndexBuffer(IndexBuffer buffer, byte[] data)
+    {
+        var vkBuffer = buffer.ToVulkanIndexBuffer();
+        CopyDataToDeviceLocalBuffer(vkBuffer.Buffer, data, buffer.Size);
+    }
+
+    public override unsafe void CopyDataToConstantBuffer(ConstantBuffer buffer, byte[] data)
+    {
+        var vkBuffer = buffer.ToVulkanConstantBuffer();
+
+        void* mappedMemory = null;
+        var result = _vk.MapMemory(_device, vkBuffer.DeviceMemory, 0, (ulong)vkBuffer.Size, 0, ref mappedMemory);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't map buffer memory: {result}.");
+
+        Marshal.Copy(data, 0, (nint)mappedMemory, data.Length);
+        _vk.UnmapMemory(_device, vkBuffer.DeviceMemory);
+    }
+
+    public override unsafe void BindVertexBuffers(CommandBuffer commandBuffer, VertexBuffer[] buffers)
+    {
+        var vkBuffers = buffers.Select(x => x.ToVulkanVertexBuffer().Buffer).ToArray();
         var offsets = new ulong[vkBuffers.Length];
         Array.Fill<ulong>(offsets, 0);
 
@@ -1292,8 +1366,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
     }
 
-    public override unsafe void BindIndexBuffer(ICommandBuffer commandBuffer, Buffer buffer, IndexType indexType)
+    public override unsafe void BindIndexBuffer(CommandBuffer commandBuffer, IndexBuffer buffer, IndexType indexType)
     {
-        _vk.CmdBindIndexBuffer(commandBuffer.ToVulkanCommandBuffer(), buffer.ToVulkanBuffer().Buffer, 0, indexType.ToVulkanIndexType());
+        _vk.CmdBindIndexBuffer(commandBuffer.ToVulkanCommandBuffer(), buffer.ToVulkanIndexBuffer().Buffer, 0, indexType.ToVulkanIndexType());
     }
 }

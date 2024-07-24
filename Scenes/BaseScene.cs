@@ -35,19 +35,19 @@ public abstract class BaseScene(GraphicsDevice graphicsDevice) : IDisposable
         }
     }
 
-    public void DrawScene()
+    public void DrawScene(float width, float height)
     {
         var imageIndex = _graphicsDevice.BeginFrame(_currentFrame);
         if (imageIndex != -1)
         {
             var commandBuffer = _graphicsDevice.GetCommandBuffer(_currentFrame);
 
-            Draw(commandBuffer, imageIndex);
+            Draw(commandBuffer, imageIndex, width, height);
 
             _graphicsDevice.EndFrame(commandBuffer, _currentFrame, imageIndex);
             _currentFrame++;
         }
     }
 
-    protected abstract void Draw(ICommandBuffer commandBuffer, int imageIndex);
+    protected abstract void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height);
 }

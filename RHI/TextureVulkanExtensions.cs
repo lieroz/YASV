@@ -1,5 +1,3 @@
-using System;
-
 namespace YASV.RHI;
 
 internal static class TextureVulkanExtensions

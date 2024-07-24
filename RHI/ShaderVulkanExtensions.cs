@@ -1,4 +1,3 @@
-using System;
 using Silk.NET.Vulkan;
 
 namespace YASV.RHI;

@@ -10,7 +10,7 @@ public class TriangleScene : BaseScene
     private readonly GraphicsPipelineLayout _triangleGraphicsPipelineLayout;
     private readonly GraphicsPipelineDesc _triangleGraphicsPipelineDesc;
     private readonly GraphicsPipeline _triangleGraphicsPipeline;
-    private readonly YASV.RHI.Buffer _triangleVertexBuffer;
+    private readonly VertexBuffer _triangleVertexBuffer;
 
     private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
     {
@@ -141,26 +141,20 @@ public class TriangleScene : BaseScene
 
         _triangleGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
         {
-            SetLayoutCount = 0,
             SetLayouts = null,
-            PushConstantRangeCount = 0,
             PushConstantRanges = null
         });
         _triangleGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_triangleGraphicsPipelineDesc, _triangleGraphicsPipelineLayout);
 
-        _triangleVertexBuffer = _graphicsDevice.CreateVertexBuffer(new()
-        {
-            Size = Marshal.SizeOf<Vertex>() * _vertices.Length,
-            Usages = [BufferUsage.Vertex, BufferUsage.TransferDst],
-            SharingMode = SharingMode.Exclusive
-        });
+        int vertexBufferSize = Marshal.SizeOf<Vertex>() * _vertices.Length;
+        _triangleVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
 
-        var data = new byte[Marshal.SizeOf<Vertex>() * _vertices.Length];
+        var data = new byte[vertexBufferSize];
         for (int i = 0; i < _vertices.Length; i++)
         {
             System.Buffer.BlockCopy(_vertices[i].Bytes, 0, data, Marshal.SizeOf<Vertex>() * i, Marshal.SizeOf<Vertex>());
         }
-        _graphicsDevice.CopyDataToBuffer(_triangleVertexBuffer, data, _currentFrame);
+        _graphicsDevice.CopyDataToVertexBuffer(_triangleVertexBuffer, data);
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
 
@@ -168,11 +162,11 @@ public class TriangleScene : BaseScene
         {
             _graphicsDevice.DestroyGraphicsPipelines([_triangleGraphicsPipeline]);
             _graphicsDevice.DestroyGraphicsPipelineLayouts([_triangleGraphicsPipelineLayout]);
-            _graphicsDevice.DestroyBuffer(_triangleVertexBuffer);
+            _graphicsDevice.DestroyVertexBuffer(_triangleVertexBuffer);
         };
     }
 
-    protected override void Draw(ICommandBuffer commandBuffer, int imageIndex)
+    protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)
     {
         _graphicsDevice.BeginCommandBuffer(commandBuffer);
         {

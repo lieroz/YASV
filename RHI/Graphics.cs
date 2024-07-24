@@ -230,35 +230,31 @@ public enum ShaderStage
     Count
 }
 
-public enum BufferUsage
-{
-    None,
-    TransferSrc,
-    TransferDst,
-    UniformTexel,
-    StorageTexel,
-    Uniform,
-    Storage,
-    Index,
-    Vertex,
-    Indirect
-}
-
-public enum SharingMode
-{
-    Exclusive,
-    Concurrent
-}
-
 public enum IndexType
 {
     Uint16,
     Uint32
 }
 
+public enum DescriptorType
+{
+    Sampler,
+    CombinedImageSampler,
+    SampledImage,
+    StorageImage,
+    UniformTexelBuffer,
+    StorageTexelBuffer,
+    UniformBuffer,
+    StorageBuffer,
+    UniformBufferDynamic,
+    StorageBufferDynamic,
+    InputAttachment
+}
+
 public static class Constants
 {
     public const int MaxFramesInFlight = 2;
+    public const int PreallocatedBuffersCount = 3;
 }
 
 public struct Viewport
