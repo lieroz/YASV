@@ -50,6 +50,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Device _device;
     private Queue _graphicsQueue;
     private Queue _presentQueue;
+    private Queue _transferQueue;
     private static string[] _deviceExtensions = [
         KhrSwapchain.ExtensionName,
         KhrDynamicRendering.ExtensionName
@@ -349,7 +350,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     {
         var queueFamilyIndices = FindQueueFamilies(_physicalDevice);
         var deviceQueueCreateInfos = new List<DeviceQueueCreateInfo>();
-        var uniqueQueueFamilies = new[] { queueFamilyIndices.Graphics, queueFamilyIndices.Present }.Distinct().ToArray();
+        var uniqueQueueFamilies = new[] { queueFamilyIndices.Graphics, queueFamilyIndices.Present, queueFamilyIndices.Transfer }.Distinct().ToArray();
 
         var queuePriority = 1f;
         foreach (var queueFamily in uniqueQueueFamilies)
@@ -402,6 +403,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         _graphicsQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Graphics!.Value, 0);
         _presentQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Present!.Value, 0);
+        _transferQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Transfer!.Value, 0);
     }
 
     private unsafe void DestroyLogicalDevice() => _vk.DestroyDevice(_device, null);
@@ -778,7 +780,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PImageIndices = (uint*)&imageIndex,
         };
 
-        result = _khrSwapchain!.QueuePresent(_graphicsQueue, ref presentInfo);
+        result = _khrSwapchain!.QueuePresent(_presentQueue, ref presentInfo);
         if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
         {
             RecreateSwapchain();
@@ -891,47 +893,31 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(result != Result.Success, $"vkEndCommandBuffer failed: {result}.");
     }
 
-    public override void SetDefaultViewportAndScissor(CommandBuffer commandBuffer)
+    public override unsafe Shader CreateShader(string path, ShaderStage stage)
     {
-        var viewport = new Silk.NET.Vulkan.Viewport()
+        var code = _shaderCompiler.Compile(path, stage, true);
+        fixed (byte* pCode = code)
         {
-            X = 0,
-            Y = 0,
-            Width = _swapchainExtent.Width,
-            Height = _swapchainExtent.Height,
-            MinDepth = 0.0f,
-            MaxDepth = 1.0f
-        };
-        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref viewport);
+            ShaderModuleCreateInfo shaderModuleCreateInfo = new()
+            {
+                SType = StructureType.ShaderModuleCreateInfo,
+                CodeSize = (uint)code.Length,
+                PCode = (uint*)pCode,
+            };
 
-        var scissor = new Silk.NET.Vulkan.Rect2D()
+            var result = _vk.CreateShaderModule(_device, ref shaderModuleCreateInfo, null, out var shaderModule);
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
+
+            return new VulkanShaderWrapper(shaderModule, stage);
+        }
+    }
+
+    public override unsafe void DestroyShaders(Shader[] shaders)
+    {
+        foreach (var shader in shaders)
         {
-            Offset = new(0, 0),
-            Extent = _swapchainExtent
-        };
-        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);
-    }
-
-    public override void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports)
-    {
-        var vkViewports = viewports.Select(v => new Silk.NET.Vulkan.Viewport(v.X, v.Y, v.Width, v.Height, v.MinDepth, v.MaxDepth)).ToArray();
-        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), (uint)firstViewport, (uint)viewports.Length, vkViewports);
-    }
-
-    public override void SetScissors(CommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors)
-    {
-        var vkScissors = scissors.Select(v => new Silk.NET.Vulkan.Rect2D(new(v.X, v.Y), new((uint)v.Width, (uint)v.Height))).ToArray();
-        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), (uint)firstScissor, (uint)scissors.Length, vkScissors);
-    }
-
-    public override void Draw(CommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
-    {
-        _vk.CmdDraw(commandBuffer.ToVulkanCommandBuffer(), vertexCount, instanceCount, firstVertex, firstInstance);
-    }
-
-    public override void DrawIndexed(CommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance)
-    {
-        _vk.CmdDrawIndexed(commandBuffer.ToVulkanCommandBuffer(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+            _vk.DestroyShaderModule(_device, shader.ToVulkanShader(), null);
+        }
     }
 
     // TODO: move to vulkan graphics extensions
@@ -1090,31 +1076,47 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdBindPipeline(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, graphicsPipeline.ToVulkanGraphicsPipeline());
     }
 
-    public override unsafe Shader CreateShader(string path, ShaderStage stage)
+    public override void SetDefaultViewportAndScissor(CommandBuffer commandBuffer)
     {
-        var code = _shaderCompiler.Compile(path, stage, true);
-        fixed (byte* pCode = code)
+        var viewport = new Silk.NET.Vulkan.Viewport()
         {
-            ShaderModuleCreateInfo shaderModuleCreateInfo = new()
-            {
-                SType = StructureType.ShaderModuleCreateInfo,
-                CodeSize = (uint)code.Length,
-                PCode = (uint*)pCode,
-            };
+            X = 0,
+            Y = 0,
+            Width = _swapchainExtent.Width,
+            Height = _swapchainExtent.Height,
+            MinDepth = 0.0f,
+            MaxDepth = 1.0f
+        };
+        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref viewport);
 
-            var result = _vk.CreateShaderModule(_device, ref shaderModuleCreateInfo, null, out var shaderModule);
-            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create shader module: {result}.");
-
-            return new VulkanShaderWrapper(shaderModule, stage);
-        }
+        var scissor = new Silk.NET.Vulkan.Rect2D()
+        {
+            Offset = new(0, 0),
+            Extent = _swapchainExtent
+        };
+        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);
     }
 
-    public override unsafe void DestroyShaders(Shader[] shaders)
+    public override void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports)
     {
-        foreach (var shader in shaders)
-        {
-            _vk.DestroyShaderModule(_device, shader.ToVulkanShader(), null);
-        }
+        var vkViewports = viewports.Select(v => new Silk.NET.Vulkan.Viewport(v.X, v.Y, v.Width, v.Height, v.MinDepth, v.MaxDepth)).ToArray();
+        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), (uint)firstViewport, (uint)viewports.Length, vkViewports);
+    }
+
+    public override void SetScissors(CommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors)
+    {
+        var vkScissors = scissors.Select(v => new Silk.NET.Vulkan.Rect2D(new(v.X, v.Y), new((uint)v.Width, (uint)v.Height))).ToArray();
+        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), (uint)firstScissor, (uint)scissors.Length, vkScissors);
+    }
+
+    public override void Draw(CommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance)
+    {
+        _vk.CmdDraw(commandBuffer.ToVulkanCommandBuffer(), vertexCount, instanceCount, firstVertex, firstInstance);
+    }
+
+    public override void DrawIndexed(CommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance)
+    {
+        _vk.CmdDrawIndexed(commandBuffer.ToVulkanCommandBuffer(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 
     private int FindMemoryType(uint typeFilter, MemoryPropertyFlags properties)
@@ -1274,10 +1276,11 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             PCommandBuffers = &commandBuffer
         };
 
-        result = _vk.QueueSubmit(_graphicsQueue, 1, &submitInfo, default);
+        result = _vk.QueueSubmit(_transferQueue, 1, &submitInfo, default);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
 
-        result = _vk.QueueWaitIdle(_graphicsQueue);
+        // TODO: rewrite to semaphores
+        result = _vk.QueueWaitIdle(_transferQueue);
         VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
 
         _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);

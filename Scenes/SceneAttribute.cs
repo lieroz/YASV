@@ -1,5 +1,3 @@
-using System;
-
 namespace YASV.Scenes;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]

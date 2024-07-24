@@ -68,11 +68,8 @@ public abstract class GraphicsDevice(IView view)
     public abstract void BeginCommandBuffer(CommandBuffer commandBuffer);
     public abstract void EndCommandBuffer(CommandBuffer commandBuffer);
 
-    public abstract void SetDefaultViewportAndScissor(CommandBuffer commandBuffer);
-    public abstract void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports);
-    public abstract void SetScissors(CommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors);
-    public abstract void Draw(CommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance);
-    public abstract void DrawIndexed(CommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance);
+    public abstract Shader CreateShader(string path, ShaderStage stage);
+    public abstract unsafe void DestroyShaders(Shader[] shaders);
 
     public abstract GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc);
     public abstract void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts);
@@ -81,8 +78,12 @@ public abstract class GraphicsDevice(IView view)
     public abstract void DestroyGraphicsPipelines(GraphicsPipeline[] pipelines);
     public abstract void BindGraphicsPipeline(CommandBuffer commandBuffer, GraphicsPipeline pipeline);
 
-    public abstract Shader CreateShader(string path, ShaderStage stage);
-    public abstract unsafe void DestroyShaders(Shader[] shaders);
+    public abstract void SetDefaultViewportAndScissor(CommandBuffer commandBuffer);
+    public abstract void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports);
+    public abstract void SetScissors(CommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors);
+
+    public abstract void Draw(CommandBuffer commandBuffer, uint vertexCount, uint instanceCount, uint firstVertex, uint firstInstance);
+    public abstract void DrawIndexed(CommandBuffer commandBuffer, uint indexCount, uint instanceCount, uint firstIndex, int vertexOffset, uint firstInstance);
 
     public abstract VertexBuffer CreateVertexBuffer(int size);
     public abstract IndexBuffer CreateIndexBuffer(int size);
