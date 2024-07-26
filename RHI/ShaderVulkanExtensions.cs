@@ -4,14 +4,14 @@ namespace YASV.RHI;
 
 internal class VulkanShaderWrapper(ShaderModule shaderModule, ShaderStage stage) : Shader(stage)
 {
-    public readonly ShaderModule _shaderModule = shaderModule;
+    public ShaderModule ShaderModule { get; private set; } = shaderModule;
 }
 
 internal static class VulkanShaderExtensions
 {
     internal static ShaderModule ToVulkanShader(this Shader shader)
     {
-        return ((VulkanShaderWrapper)shader)._shaderModule;
+        return ((VulkanShaderWrapper)shader).ShaderModule;
     }
 
     internal static ShaderStageFlags ToVulkanShaderStage(this ShaderStage stage)

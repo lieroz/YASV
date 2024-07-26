@@ -2,12 +2,12 @@ namespace YASV.RHI;
 
 internal class VulkanGraphicsPipelineWrapper(Silk.NET.Vulkan.Pipeline pipeline) : GraphicsPipeline
 {
-    public Silk.NET.Vulkan.Pipeline Pipeline { get; set; } = pipeline;
+    public Silk.NET.Vulkan.Pipeline Pipeline { get; private set; } = pipeline;
 }
 
 internal class VulkanGraphicsPipelineLayoutWrapper(Silk.NET.Vulkan.PipelineLayout pipelineLayout) : GraphicsPipelineLayout
 {
-    public Silk.NET.Vulkan.PipelineLayout PipelineLayout { get; set; } = pipelineLayout;
+    public Silk.NET.Vulkan.PipelineLayout PipelineLayout { get; private set; } = pipelineLayout;
 }
 
 internal static class GraphicsPipelineVulkanExtensions

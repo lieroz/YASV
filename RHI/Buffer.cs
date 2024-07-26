@@ -7,15 +7,11 @@ public class Buffer(int size)
     public int Size { get; } = size;
 }
 
-public class DeviceLocalBuffer(int size) : Buffer(size)
+public class VertexBuffer(int size) : Buffer(size)
 {
 }
 
-public class VertexBuffer(int size) : DeviceLocalBuffer(size)
-{
-}
-
-public class IndexBuffer(int size) : DeviceLocalBuffer(size)
+public class IndexBuffer(int size) : Buffer(size)
 {
 }
 

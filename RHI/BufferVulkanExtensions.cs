@@ -2,26 +2,26 @@ namespace YASV.RHI;
 
 internal class VulkanVertexBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : VertexBuffer(size)
 {
-    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
-    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+    public Silk.NET.Vulkan.Buffer Buffer { get; private set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; private set; } = deviceMemory;
 }
 
 internal class VulkanIndexBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : IndexBuffer(size)
 {
-    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
-    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+    public Silk.NET.Vulkan.Buffer Buffer { get; private set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; private set; } = deviceMemory;
 }
 
 internal class VulkanConstantBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : ConstantBuffer(size)
 {
-    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
-    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+    public Silk.NET.Vulkan.Buffer Buffer { get; private set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; private set; } = deviceMemory;
 }
 
 internal class VulkanStagingBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : StagingBuffer(size)
 {
-    public Silk.NET.Vulkan.Buffer Buffer { get; set; } = buffer;
-    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; set; } = deviceMemory;
+    public Silk.NET.Vulkan.Buffer Buffer { get; private set; } = buffer;
+    public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; private set; } = deviceMemory;
 }
 
 internal static class BufferVulkanExtensions
