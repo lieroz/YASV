@@ -1,5 +1,6 @@
 namespace YASV.RHI;
 
+// TODO: rewrite using generators
 internal class VulkanVertexBufferWrapper(int size, Silk.NET.Vulkan.Buffer buffer, Silk.NET.Vulkan.DeviceMemory deviceMemory) : VertexBuffer(size)
 {
     public Silk.NET.Vulkan.Buffer Buffer { get; private set; } = buffer;
