@@ -84,9 +84,9 @@ internal class DescriptorAllocator
         _fullPools.Clear();
     }
 
-    public unsafe DescriptorSet Allocate(DescriptorSetLayout[] layouts, out DescriptorPool pool)
+    public unsafe Silk.NET.Vulkan.DescriptorSet Allocate(DescriptorSetLayout[] layouts)
     {
-        pool = GetDescriptorPool();
+        var pool = GetDescriptorPool();
 
         fixed (DescriptorSetLayout* layoutsPtr = layouts)
         {
@@ -164,10 +164,10 @@ internal class DescriptorAllocator
     }
 }
 
-internal class DescriptorWriter
+internal class VulkanDescriptorWriter : DescriptorWriter
 {
-    private List<DescriptorImageInfo> _imageInfos = [];
-    private List<DescriptorBufferInfo> _bufferInfos = [];
+    private readonly List<DescriptorImageInfo> _imageInfos = [];
+    private readonly List<DescriptorBufferInfo> _bufferInfos = [];
     private List<WriteDescriptorSet> _writes = [];
 
     public unsafe void WriteImage(int binding, ImageView image, Silk.NET.Vulkan.Sampler sampler, Silk.NET.Vulkan.ImageLayout layout, Silk.NET.Vulkan.DescriptorType type)
@@ -191,7 +191,7 @@ internal class DescriptorWriter
         _writes.Add(writeInfo);
     }
 
-    public unsafe void WriteBuffer(int binding, Silk.NET.Vulkan.Buffer buffer, int size, int offset, Silk.NET.Vulkan.DescriptorType type)
+    public unsafe void WriteBuffer(Vk vk, Device device, int binding, Silk.NET.Vulkan.Buffer buffer, int size, int offset, Silk.NET.Vulkan.DescriptorType type, Silk.NET.Vulkan.DescriptorSet descriptorSet)
     {
         var bufferInfo = new DescriptorBufferInfo()
         {
@@ -205,11 +205,13 @@ internal class DescriptorWriter
         {
             SType = StructureType.WriteDescriptorSet,
             DstBinding = (uint)binding,
+            DstSet = descriptorSet,
             DescriptorCount = 1,
             DescriptorType = type,
             PBufferInfo = &bufferInfo
         };
         _writes.Add(writeInfo);
+        vk.UpdateDescriptorSets(device, _writes.ToArray(), null);
     }
 
     public void Clear()
@@ -219,9 +221,8 @@ internal class DescriptorWriter
         _writes.Clear();
     }
 
-    public void UpdateSet(Vk vk, Device device, DescriptorSet descriptorSet)
+    public void UpdateSet(Vk vk, Device device)
     {
-        _writes.ForEach(x => x.DstSet = descriptorSet);
         vk.UpdateDescriptorSets(device, _writes.ToArray(), null);
     }
 }
@@ -967,7 +968,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
 
         _vk.ResetFences(_device, 1, ref _inFlightFences![frameIndex]);
-        // _descriptorAllocators[frameIndex].Clear();
+        _descriptorAllocators[frameIndex].Clear();
         return (int)imageIndex;
     }
 
@@ -1145,13 +1146,37 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
     }
 
+    public override DescriptorWriter GetDescriptorWriter()
+    {
+        return new VulkanDescriptorWriter();
+    }
+
+    public override void BindConstantBuffer(DescriptorWriter writer, int binding, ConstantBuffer buffer, int size, int offset, DescriptorType type, DescriptorSet descriptorSet)
+    {
+        writer.ToVulkanDescriptorWriter().WriteBuffer(_vk, _device, binding, buffer.ToVulkanConstantBuffer().Buffer, size, offset, type.ToVulkanDescriptorType(), descriptorSet.ToVulkanDescriptorSet());
+    }
+
+    public override DescriptorSet GetDescriptorSet(int frameIndex, GraphicsPipelineLayout layout)
+    {
+        var descriptorSet = _descriptorAllocators[frameIndex].Allocate(layout.ToVulkanGraphicsPipelineLayout().DescriptorSetLayouts);
+        return new VulkanDescriptorSetWrapper(descriptorSet);
+    }
+
+    public override void UpdateDescriptorSet(DescriptorWriter writer)
+    {
+        writer.ToVulkanDescriptorWriter().UpdateSet(_vk, _device);
+    }
+
+    public override void BindDescriptorSet(CommandBuffer commandBuffer, GraphicsPipelineLayout layout, DescriptorSet set)
+    {
+        _vk.CmdBindDescriptorSets(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, layout.ToVulkanGraphicsPipelineLayout().PipelineLayout, 0, [set.ToVulkanDescriptorSet()], null);
+    }
+
     // TODO: move to vulkan graphics extensions
     public override unsafe GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc)
     {
         Result result = Result.Success;
         DescriptorSetLayout[]? setLayouts = null;
-        var descriptorSets = new DescriptorSet[Constants.MaxFramesInFlight];
-        var descriptorPools = new DescriptorPool[Constants.MaxFramesInFlight];
 
         if (desc.SetLayouts != null)
         {
@@ -1164,11 +1189,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create descriptor set layout: {result}.");
 
                 setLayouts[i] = setLayout;
-            }
-
-            for (int i = 0; i < Constants.MaxFramesInFlight; i++)
-            {
-                descriptorSets[i] = _descriptorAllocators[i].Allocate(setLayouts, out descriptorPools[i]);
             }
         }
 
@@ -1194,7 +1214,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out var layout);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
 
-        return new VulkanGraphicsPipelineLayoutWrapper(layout, setLayouts, descriptorSets, descriptorPools);
+        return new VulkanGraphicsPipelineLayoutWrapper(layout, setLayouts);
     }
 
     public override unsafe void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts)
@@ -1208,11 +1228,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 foreach (var descriptorSetLayout in vkLayout.DescriptorSetLayouts)
                 {
                     _vk.DestroyDescriptorSetLayout(_device, descriptorSetLayout, null);
-                }
-
-                for (int i = 0; i < Constants.MaxFramesInFlight; i++)
-                {
-                    _vk.FreeDescriptorSets(_device, vkLayout.DescriptorPools[i], [vkLayout.DescriptorSets[i]]);
                 }
             }
 

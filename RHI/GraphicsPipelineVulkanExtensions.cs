@@ -6,14 +6,10 @@ internal class VulkanGraphicsPipelineWrapper(Silk.NET.Vulkan.Pipeline pipeline) 
 }
 
 internal class VulkanGraphicsPipelineLayoutWrapper(Silk.NET.Vulkan.PipelineLayout pipelineLayout,
-                                                   Silk.NET.Vulkan.DescriptorSetLayout[]? descriptorSetLayouts,
-                                                   Silk.NET.Vulkan.DescriptorSet[] descriptorSets,
-                                                   Silk.NET.Vulkan.DescriptorPool[] descriptorPools) : GraphicsPipelineLayout
+                                                   Silk.NET.Vulkan.DescriptorSetLayout[]? descriptorSetLayouts) : GraphicsPipelineLayout
 {
     public Silk.NET.Vulkan.PipelineLayout PipelineLayout { get; private set; } = pipelineLayout;
     public Silk.NET.Vulkan.DescriptorSetLayout[]? DescriptorSetLayouts { get; private set; } = descriptorSetLayouts;
-    public Silk.NET.Vulkan.DescriptorSet[] DescriptorSets { get; private set; } = descriptorSets;
-    public Silk.NET.Vulkan.DescriptorPool[] DescriptorPools { get; private set; } = descriptorPools;
 }
 
 internal static class GraphicsPipelineVulkanExtensions

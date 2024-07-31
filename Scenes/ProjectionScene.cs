@@ -11,7 +11,7 @@ public class ProjectionScene : BaseScene
     {
         public static float DegreesToRadians(float degrees)
         {
-            return System.MathF.PI / 180f * degrees;
+            return MathF.PI / 180f * degrees;
         }
     }
 
@@ -137,7 +137,7 @@ public class ProjectionScene : BaseScene
     {
         _graphicsDevice = graphicsDevice;
 
-        var vertexShader = _graphicsDevice.CreateShader("Shaders/triangle.vert.hlsl", ShaderStage.Vertex);
+        var vertexShader = _graphicsDevice.CreateShader("Shaders/projection.vert.hlsl", ShaderStage.Vertex);
         var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", ShaderStage.Pixel);
 
         _projectionGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
@@ -261,7 +261,17 @@ public class ProjectionScene : BaseScene
                     View = Matrix4X4.CreateLookAt<float>(new(2.0f, 2.0f, 2.0f), new(0.0f, 0.0f, 0.0f), new(0.0f, 0.0f, 1.0f)),
                     Projection = Matrix4X4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(45.0f), width / height, 0.1f, 10.0f)
                 };
-                _graphicsDevice.CopyDataToConstantBuffer(_projectionConstantBuffers[_currentFrame % Constants.MaxFramesInFlight], ubo.Bytes);
+
+                var frameIndex = _currentFrame % Constants.MaxFramesInFlight;
+
+                var cb = _projectionConstantBuffers[frameIndex];
+                _graphicsDevice.CopyDataToConstantBuffer(cb, ubo.Bytes);
+
+                var descriptorWriter = _graphicsDevice.GetDescriptorWriter();
+                var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _projectionGraphicsPipelineLayout);
+                _graphicsDevice.BindConstantBuffer(descriptorWriter, 0, cb, cb.Size, 0, DescriptorType.UniformBuffer, descriptorSet);
+                _graphicsDevice.BindDescriptorSet(commandBuffer, _projectionGraphicsPipelineLayout, descriptorSet);
+                // _graphicsDevice.UpdateDescriptorSet(descriptorWriter);
 
                 _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
                 _graphicsDevice.BindVertexBuffers(commandBuffer, [_projectionVertexBuffer]);

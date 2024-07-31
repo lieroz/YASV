@@ -71,6 +71,12 @@ public abstract class GraphicsDevice(IView view)
     public abstract Shader CreateShader(string path, ShaderStage stage);
     public abstract unsafe void DestroyShaders(Shader[] shaders);
 
+    public abstract DescriptorWriter GetDescriptorWriter();
+    public abstract DescriptorSet GetDescriptorSet(int frameIndex, GraphicsPipelineLayout layout);
+    public abstract void BindConstantBuffer(DescriptorWriter writer, int binding, ConstantBuffer buffer, int size, int offset, DescriptorType type, DescriptorSet descriptorSet);
+    public abstract void UpdateDescriptorSet(DescriptorWriter writer);
+    public abstract void BindDescriptorSet(CommandBuffer commandBuffer, GraphicsPipelineLayout layout, DescriptorSet set);
+
     public abstract GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc);
     public abstract void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts);
 

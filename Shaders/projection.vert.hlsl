@@ -22,7 +22,7 @@ struct VertexOutput
 VertexOutput main(VertexInput input)
 {
     VertexOutput output;
-    output.position = mul(constants.projectionMatrix, (constants.viewMatrix, (constants.modelMatrix, (input.position, 0.0, 1.0))));
+    output.position = mul(constants.projectionMatrix, mul(constants.viewMatrix, mul(constants.modelMatrix, float4(input.position, 0.0, 1.0))));
     output.color = input.color;
     return output;
 }
