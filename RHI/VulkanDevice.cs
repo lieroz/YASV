@@ -26,7 +26,7 @@ internal class DescriptorAllocator
 {
     private const int MaxSetsPerPool = 4092;
 
-    internal class PoolSizeRatio
+    internal struct PoolSizeRatio
     {
         public Silk.NET.Vulkan.DescriptorType descriptorType;
         public float ratio;
@@ -39,17 +39,17 @@ internal class DescriptorAllocator
     private List<DescriptorPool> _readyPools = [];
     private int _setsPerPool = 0;
 
-    internal DescriptorAllocator(Vk vk, Device device, int maxSets, IReadOnlyCollection<PoolSizeRatio> poolRatios)
+    internal DescriptorAllocator(Vk vk, Device device, int maxSets, List<PoolSizeRatio> poolRatios)
     {
         _vk = vk;
         _device = device;
-        _ratios = (List<PoolSizeRatio>)poolRatios;
+        _ratios = poolRatios;
         var newPool = CreateDescriptorPool(maxSets, _ratios);
         _setsPerPool = (int)(maxSets * 1.5);
         _readyPools.Add(newPool);
     }
 
-    private void Clear()
+    public void Clear()
     {
         foreach (var pool in _readyPools)
         {
@@ -67,7 +67,7 @@ internal class DescriptorAllocator
         _fullPools.Clear();
     }
 
-    private unsafe void Destroy()
+    public unsafe void Destroy()
     {
         foreach (var pool in _readyPools)
         {
@@ -84,32 +84,35 @@ internal class DescriptorAllocator
         _fullPools.Clear();
     }
 
-    public unsafe DescriptorSet Allocate(DescriptorSetLayout layout)
+    public unsafe DescriptorSet Allocate(DescriptorSetLayout[] layouts, out DescriptorPool pool)
     {
-        var poolToUse = GetDescriptorPool();
+        pool = GetDescriptorPool();
 
-        var allocInfo = new DescriptorSetAllocateInfo()
+        fixed (DescriptorSetLayout* layoutsPtr = layouts)
         {
-            SType = StructureType.DescriptorSetAllocateInfo,
-            DescriptorPool = poolToUse,
-            DescriptorSetCount = 1,
-            PSetLayouts = &layout
-        };
+            var allocInfo = new DescriptorSetAllocateInfo()
+            {
+                SType = StructureType.DescriptorSetAllocateInfo,
+                DescriptorPool = pool,
+                DescriptorSetCount = (uint)layouts.Length,
+                PSetLayouts = layoutsPtr
+            };
 
-        var result = _vk.AllocateDescriptorSets(_device, ref allocInfo, out var descriptorSet);
-        if (result == Result.ErrorOutOfPoolMemory || result == Result.ErrorFragmentedPool)
-        {
-            _fullPools.Add(poolToUse);
+            var result = _vk.AllocateDescriptorSets(_device, ref allocInfo, out var descriptorSet);
+            if (result == Result.ErrorOutOfPoolMemory || result == Result.ErrorFragmentedPool)
+            {
+                _fullPools.Add(pool);
 
-            poolToUse = GetDescriptorPool();
-            allocInfo.DescriptorPool = poolToUse;
+                pool = GetDescriptorPool();
+                allocInfo.DescriptorPool = pool;
 
-            result = _vk.AllocateDescriptorSets(_device, ref allocInfo, out descriptorSet);
+                result = _vk.AllocateDescriptorSets(_device, ref allocInfo, out descriptorSet);
+            }
+
+            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't allocate descriptor sets: {result}.");
+            _readyPools.Add(pool);
+            return descriptorSet;
         }
-
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't allocate descriptor sets: {result}.");
-        _readyPools.Add(poolToUse);
-        return descriptorSet;
     }
 
     private DescriptorPool GetDescriptorPool()
@@ -148,7 +151,7 @@ internal class DescriptorAllocator
             var poolCreateInfo = new DescriptorPoolCreateInfo()
             {
                 SType = StructureType.DescriptorPoolCreateInfo,
-                Flags = DescriptorPoolCreateFlags.None,
+                Flags = DescriptorPoolCreateFlags.FreeDescriptorSetBit,
                 MaxSets = (uint)setCount,
                 PoolSizeCount = (uint)poolSizes.Length,
                 PPoolSizes = poolSizesPtr
@@ -274,7 +277,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     private Silk.NET.Vulkan.Semaphore[]? _renderFinishedSemaphores;
     private Fence[]? _inFlightFences;
     private readonly ConcurrentBag<Silk.NET.Vulkan.CommandBuffer> _transferCommandBufferPool = [];
-    private DescriptorPool _descriptorPool;
+    private readonly DescriptorAllocator[] _descriptorAllocators = new DescriptorAllocator[Constants.MaxFramesInFlight];
 
     private static unsafe string[] GetRequiredExtensions(Sdl sdlApi, IView view)
     {
@@ -600,6 +603,19 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 #endif
 
             VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create logical device: {result}.");
+
+            var poolSizeRatios = new List<DescriptorAllocator.PoolSizeRatio>
+            {
+                new() { descriptorType = Silk.NET.Vulkan.DescriptorType.StorageImage, ratio = 3 },
+                new() { descriptorType = Silk.NET.Vulkan.DescriptorType.StorageBuffer, ratio = 3 },
+                new() { descriptorType = Silk.NET.Vulkan.DescriptorType.UniformBuffer, ratio = 3 },
+                new() { descriptorType = Silk.NET.Vulkan.DescriptorType.CombinedImageSampler, ratio = 4 }
+            };
+
+            for (int i = 0; i < Constants.MaxFramesInFlight; i++)
+            {
+                _descriptorAllocators[i] = new(_vk, _device, 1000, poolSizeRatios);
+            }
         }
 
         _graphicsQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Graphics!.Value, 0);
@@ -607,7 +623,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _transferQueue = _vk.GetDeviceQueue(_device, queueFamilyIndices.Transfer!.Value, 0);
     }
 
-    private unsafe void DestroyLogicalDevice() => _vk.DestroyDevice(_device, null);
+    private unsafe void DestroyLogicalDevice()
+    {
+        for (int i = 0; i < Constants.MaxFramesInFlight; i++)
+        {
+            _descriptorAllocators[i].Destroy();
+        }
+        _vk.DestroyDevice(_device, null);
+    }
 
     private unsafe SwapchainSupportDetails QuerySwapChainSupport(PhysicalDevice physicalDevice)
     {
@@ -895,8 +918,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateImageViews();
         CreateCommandPool();
         CreateSyncObjects();
-
-        CreateDescriptorPool();
     }
 
     protected override void DestroyInternal()
@@ -931,27 +952,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateImageViews();
     }
 
-    private unsafe void CreateDescriptorPool()
-    {
-        var poolSize = new DescriptorPoolSize()
-        {
-            Type = Silk.NET.Vulkan.DescriptorType.UniformBuffer,
-            DescriptorCount = Constants.MaxFramesInFlight
-        };
-
-        var poolInfo = new DescriptorPoolCreateInfo()
-        {
-            SType = StructureType.DescriptorPoolCreateInfo,
-            PoolSizeCount = 1,
-            PPoolSizes = &poolSize,
-            MaxSets = Constants.MaxFramesInFlight,
-            Flags = DescriptorPoolCreateFlags.FreeDescriptorSetBit
-        };
-
-        var result = _vk.CreateDescriptorPool(_device, ref poolInfo, null, out _descriptorPool);
-        VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't create descriptor pool: {result}.");
-    }
-
     public override unsafe int BeginFrameInternal(int frameIndex)
     {
         _vk.WaitForFences(_device, 1, ref _inFlightFences![frameIndex], true, uint.MaxValue);
@@ -967,6 +967,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         VulkanException.ThrowsIf(result != Result.Success && result != Result.SuboptimalKhr, $"Couldn't acquire next image: {result}.");
 
         _vk.ResetFences(_device, 1, ref _inFlightFences![frameIndex]);
+        // _descriptorAllocators[frameIndex].Clear();
         return (int)imageIndex;
     }
 
@@ -1148,19 +1149,26 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     public override unsafe GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc)
     {
         Result result = Result.Success;
-
         DescriptorSetLayout[]? setLayouts = null;
+        var descriptorSets = new DescriptorSet[Constants.MaxFramesInFlight];
+        var descriptorPools = new DescriptorPool[Constants.MaxFramesInFlight];
+
         if (desc.SetLayouts != null)
         {
             setLayouts = new DescriptorSetLayout[desc.SetLayouts.Length];
             for (int i = 0; i < desc.SetLayouts.Length; i++)
             {
-                // TODO: move to cache
+                // TODO: move to cache with count of entities aka shared_ptr
                 var createInfo = desc.SetLayouts[i].ToVulkanDescriptorSetLayout();
                 result = _vk.CreateDescriptorSetLayout(_device, &createInfo, null, out var setLayout);
                 VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create descriptor set layout: {result}.");
 
                 setLayouts[i] = setLayout;
+            }
+
+            for (int i = 0; i < Constants.MaxFramesInFlight; i++)
+            {
+                descriptorSets[i] = _descriptorAllocators[i].Allocate(setLayouts, out descriptorPools[i]);
             }
         }
 
@@ -1180,36 +1188,35 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             {
                 pipelineLayout.SetLayoutCount = (uint)setLayouts.Length;
                 pipelineLayout.PSetLayouts = setLayoutsPtr;
-
-                // TODO: should be moved to pool
-                // var descriptorSetAllocateInfo = new DescriptorSetAllocateInfo()
-                // {
-                //     SType = StructureType.DescriptorSetAllocateInfo,
-                //     DescriptorPool = _descriptorPool,
-                //     DescriptorSetCount = Constants.MaxFramesInFlight,
-                //     PSetLayouts = setLayoutsPtr
-                // };
-
-                // DescriptorSet[] descriptorSets = new DescriptorSet[Constants.MaxFramesInFlight];
-                // fixed (DescriptorSet* descriptorSetsPtr = descriptorSets)
-                // {
-                //     result = _vk.AllocateDescriptorSets(_device, ref descriptorSetAllocateInfo, descriptorSetsPtr);
-                //     VulkanException.ThrowsIf(result != Result.Success, $"Couldn't allocate descriptor sets: {result}.");
-                // }
             }
         }
 
         result = _vk.CreatePipelineLayout(_device, ref pipelineLayout, null, out var layout);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create pipeline layout: {result}.");
 
-        return new VulkanGraphicsPipelineLayoutWrapper(layout);
+        return new VulkanGraphicsPipelineLayoutWrapper(layout, setLayouts, descriptorSets, descriptorPools);
     }
 
     public override unsafe void DestroyGraphicsPipelineLayouts(GraphicsPipelineLayout[] layouts)
     {
         foreach (var layout in layouts)
         {
-            _vk.DestroyPipelineLayout(_device, layout.ToVulkanGraphicsPipelineLayout(), null);
+            var vkLayout = layout.ToVulkanGraphicsPipelineLayout();
+
+            if (vkLayout.DescriptorSetLayouts != null)
+            {
+                foreach (var descriptorSetLayout in vkLayout.DescriptorSetLayouts)
+                {
+                    _vk.DestroyDescriptorSetLayout(_device, descriptorSetLayout, null);
+                }
+
+                for (int i = 0; i < Constants.MaxFramesInFlight; i++)
+                {
+                    _vk.FreeDescriptorSets(_device, vkLayout.DescriptorPools[i], [vkLayout.DescriptorSets[i]]);
+                }
+            }
+
+            _vk.DestroyPipelineLayout(_device, vkLayout.PipelineLayout, null);
         }
     }
 
@@ -1294,7 +1301,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                     PDepthStencilState = (PipelineDepthStencilStateCreateInfo*)&depthStencilState,
                     PColorBlendState = &colorBlendState,
                     PDynamicState = &dynamicState,
-                    Layout = layout.ToVulkanGraphicsPipelineLayout(),
+                    Layout = layout.ToVulkanGraphicsPipelineLayout().PipelineLayout,
                     RenderPass = default,
                     Subpass = 0,
                     BasePipelineHandle = default,
