@@ -168,7 +168,8 @@ internal class VulkanDescriptorWriter : DescriptorWriter
 {
     private readonly List<DescriptorImageInfo> _imageInfos = [];
     private readonly List<DescriptorBufferInfo> _bufferInfos = [];
-    private List<WriteDescriptorSet> _writes = [];
+    private List<WriteDescriptorSet> _imageWrites = [];
+    private List<WriteDescriptorSet> _bufferWrites = [];
 
     public unsafe void WriteImage(int binding, ImageView image, Silk.NET.Vulkan.Sampler sampler, Silk.NET.Vulkan.ImageLayout layout, Silk.NET.Vulkan.DescriptorType type)
     {
@@ -185,13 +186,12 @@ internal class VulkanDescriptorWriter : DescriptorWriter
             SType = StructureType.WriteDescriptorSet,
             DstBinding = (uint)binding,
             DescriptorCount = 1,
-            DescriptorType = type,
-            PImageInfo = &imageInfo
+            DescriptorType = type
         };
-        _writes.Add(writeInfo);
+        _imageWrites.Add(writeInfo);
     }
 
-    public unsafe void WriteBuffer(Vk vk, Device device, int binding, Silk.NET.Vulkan.Buffer buffer, int size, int offset, Silk.NET.Vulkan.DescriptorType type, Silk.NET.Vulkan.DescriptorSet descriptorSet)
+    public unsafe void WriteBuffer(int binding, Silk.NET.Vulkan.Buffer buffer, int size, int offset, Silk.NET.Vulkan.DescriptorType type)
     {
         var bufferInfo = new DescriptorBufferInfo()
         {
@@ -205,25 +205,40 @@ internal class VulkanDescriptorWriter : DescriptorWriter
         {
             SType = StructureType.WriteDescriptorSet,
             DstBinding = (uint)binding,
-            DstSet = descriptorSet,
             DescriptorCount = 1,
-            DescriptorType = type,
-            PBufferInfo = &bufferInfo
+            DescriptorType = type
         };
-        _writes.Add(writeInfo);
-        vk.UpdateDescriptorSets(device, _writes.ToArray(), null);
+        _bufferWrites.Add(writeInfo);
     }
 
     public void Clear()
     {
         _imageInfos.Clear();
         _bufferInfos.Clear();
-        _writes.Clear();
+
+        _imageWrites.Clear();
+        _bufferWrites.Clear();
     }
 
-    public void UpdateSet(Vk vk, Device device)
+    public unsafe void UpdateSet(Vk vk, Device device, Silk.NET.Vulkan.DescriptorSet descriptorSet)
     {
-        vk.UpdateDescriptorSets(device, _writes.ToArray(), null);
+        VulkanException.ThrowsIf(_bufferInfos.Count != _bufferWrites.Count, $"Buffer infos and writes count must be equal: {_bufferInfos.Count} != {_bufferWrites.Count}.");
+        VulkanException.ThrowsIf(_imageInfos.Count != _imageWrites.Count, $"Image infos and writes count must be equal: {_imageInfos.Count} != {_imageWrites.Count}.");
+
+        for (int i = 0; i < _bufferInfos.Count; i++)
+        {
+            var bufferInfo = _bufferInfos[i];
+            _bufferWrites[i] = _bufferWrites[i] with { DstSet = descriptorSet, PBufferInfo = &bufferInfo };
+        }
+
+        for (int i = 0; i < _imageInfos.Count; i++)
+        {
+            var imageInfo = _imageInfos[i];
+            _imageWrites[i] = _imageWrites[i] with { DstSet = descriptorSet, PImageInfo = &imageInfo };
+        }
+
+        _bufferWrites.AddRange(_imageWrites);
+        vk.UpdateDescriptorSets(device, _bufferWrites.ToArray(), null);
     }
 }
 
@@ -1151,20 +1166,27 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return new VulkanDescriptorWriter();
     }
 
-    public override void BindConstantBuffer(DescriptorWriter writer, int binding, ConstantBuffer buffer, int size, int offset, DescriptorType type, DescriptorSet descriptorSet)
+    public override void BindConstantBuffer(DescriptorWriter writer, int binding, ConstantBuffer buffer, int size, int offset, DescriptorType type)
     {
-        writer.ToVulkanDescriptorWriter().WriteBuffer(_vk, _device, binding, buffer.ToVulkanConstantBuffer().Buffer, size, offset, type.ToVulkanDescriptorType(), descriptorSet.ToVulkanDescriptorSet());
+        writer.ToVulkanDescriptorWriter().WriteBuffer(binding, buffer.ToVulkanConstantBuffer().Buffer, size, offset, type.ToVulkanDescriptorType());
     }
 
     public override DescriptorSet GetDescriptorSet(int frameIndex, GraphicsPipelineLayout layout)
     {
-        var descriptorSet = _descriptorAllocators[frameIndex].Allocate(layout.ToVulkanGraphicsPipelineLayout().DescriptorSetLayouts);
-        return new VulkanDescriptorSetWrapper(descriptorSet);
+        var layouts = layout.ToVulkanGraphicsPipelineLayout().DescriptorSetLayouts;
+        if (layouts != null)
+        {
+            var descriptorSet = _descriptorAllocators[frameIndex].Allocate(layouts);
+            return new VulkanDescriptorSetWrapper(descriptorSet);
+        }
+        throw new VulkanException("Can't allocate descriptor set with empty descriptor set layout.");
     }
 
-    public override void UpdateDescriptorSet(DescriptorWriter writer)
+    public override void UpdateDescriptorSet(DescriptorWriter writer, DescriptorSet descriptorSet)
     {
-        writer.ToVulkanDescriptorWriter().UpdateSet(_vk, _device);
+        var vkWriter = writer.ToVulkanDescriptorWriter();
+        vkWriter.UpdateSet(_vk, _device, descriptorSet.ToVulkanDescriptorSet());
+        vkWriter.Clear();
     }
 
     public override void BindDescriptorSet(CommandBuffer commandBuffer, GraphicsPipelineLayout layout, DescriptorSet set)
@@ -1488,7 +1510,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         DestroyBufferInternal(vkBufferWrapper.Buffer, vkBufferWrapper.DeviceMemory);
     }
 
-    private Silk.NET.Vulkan.CommandBuffer GetTransferCommandBuffer()
+    private unsafe Silk.NET.Vulkan.CommandBuffer GetTransferCommandBuffer()
     {
         if (_transferCommandBufferPool.TryTake(out var commandBuffer))
         {
@@ -1503,14 +1525,20 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             CommandBufferCount = Constants.PreallocatedBuffersCount
         };
 
-        var result = _vk.AllocateCommandBuffers(_device, ref allocInfo, out commandBuffer);
+        var commandBuffers = new Silk.NET.Vulkan.CommandBuffer[Constants.PreallocatedBuffersCount];
+        var result = _vk.AllocateCommandBuffers(_device, &allocInfo, commandBuffers);
         VulkanException.ThrowsIf(result != Result.Success, $"vkAllocateCommandBuffers failed: {result}.");
 
-        return commandBuffer;
+        for (int i = 0; i < Constants.PreallocatedBuffersCount - 1; i++)
+        {
+            _transferCommandBufferPool.Add(commandBuffers[i]);
+        }
+        return commandBuffers.Last();
     }
 
     private void ReturnTransferCommandBuffer(Silk.NET.Vulkan.CommandBuffer commandBuffer)
     {
+        _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
         _transferCommandBufferPool.Add(commandBuffer);
     }
 
@@ -1551,7 +1579,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         result = _vk.QueueWaitIdle(_transferQueue);
         VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
 
-        _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
+        ReturnTransferCommandBuffer(commandBuffer);
     }
 
     private unsafe void CopyDataToDeviceLocalBuffer(Silk.NET.Vulkan.Buffer dstBuffer, byte[] data, int size)

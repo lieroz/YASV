@@ -269,9 +269,9 @@ public class ProjectionScene : BaseScene
 
                 var descriptorWriter = _graphicsDevice.GetDescriptorWriter();
                 var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _projectionGraphicsPipelineLayout);
-                _graphicsDevice.BindConstantBuffer(descriptorWriter, 0, cb, cb.Size, 0, DescriptorType.UniformBuffer, descriptorSet);
+                _graphicsDevice.BindConstantBuffer(descriptorWriter, 0, cb, cb.Size, 0, DescriptorType.UniformBuffer);
+                _graphicsDevice.UpdateDescriptorSet(descriptorWriter, descriptorSet);
                 _graphicsDevice.BindDescriptorSet(commandBuffer, _projectionGraphicsPipelineLayout, descriptorSet);
-                // _graphicsDevice.UpdateDescriptorSet(descriptorWriter);
 
                 _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
                 _graphicsDevice.BindVertexBuffers(commandBuffer, [_projectionVertexBuffer]);
