@@ -43,10 +43,10 @@ public class CommandBufferPool
         var freeBag = _freeCommandBuffers[frameIndex];
         var inUseBag = _inUseCommandBuffers[frameIndex];
 
-        var commandBuffers = inUseBag.Take(inUseBag.Count);
-        foreach (var commandBuffer in commandBuffers)
+        foreach (var commandBuffer in inUseBag.Take(inUseBag.Count))
         {
             freeBag.Add(commandBuffer);
         }
+        inUseBag.Clear();
     }
 }
