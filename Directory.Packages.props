@@ -29,4 +29,9 @@
     <PackageVersion Include="Silk.NET.Windowing.Sdl" Version="$(SilkNETVersion)" />
   </ItemGroup>
 
+  <!-- External Packages -->
+  <ItemGroup>
+    <PackageVersion Include="SkiaSharp" Version="2.88.8" />
+  </ItemGroup>
+
 </Project>

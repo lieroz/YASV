@@ -1,6 +1,7 @@
 using System.Numerics;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
+using SkiaSharp;
 
 namespace YASV.RHI;
 
@@ -48,6 +49,8 @@ public abstract class GraphicsDevice(IView view)
     protected abstract CommandBuffer[] AllocateCommandBuffers(int index, int count);
     protected abstract void ResetCommandBuffers(int index);
 
+    public abstract Texture GetBackBuffer(int index);
+
     protected StagingBuffer GetStagingBuffer(int size)
     {
         var roundedSize = (int)BitOperations.RoundUpToPowerOf2((uint)size);
@@ -60,9 +63,9 @@ public abstract class GraphicsDevice(IView view)
     }
 
     // TODO: generalize this, add more options
-    public abstract void ImageBarrier(CommandBuffer commandBuffer, int imageIndex, ImageLayout oldLayout, ImageLayout newLayout);
+    public abstract void ImageBarrier(CommandBuffer commandBuffer, Texture texture, ImageLayout oldLayout, ImageLayout newLayout);
 
-    public abstract void BeginRendering(CommandBuffer commandBuffer, int imageIndex);
+    public abstract void BeginRendering(CommandBuffer commandBuffer, Texture texture);
     public abstract void EndRendering(CommandBuffer commandBuffer);
 
     public abstract void BeginCommandBuffer(CommandBuffer commandBuffer);
@@ -108,4 +111,7 @@ public abstract class GraphicsDevice(IView view)
     // TODO: Add offsets
     public abstract void BindVertexBuffers(CommandBuffer commandBuffer, VertexBuffer[] buffers);
     public abstract void BindIndexBuffer(CommandBuffer commandBuffer, IndexBuffer buffer, IndexType indexType);
+
+    public abstract Texture CreateTextureFromImage(SKImage image);
+    public abstract void DestoryTexture(Texture texture);
 }

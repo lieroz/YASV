@@ -30,5 +30,6 @@
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="Silk.NET.Windowing" />
     <PackageReference Include="Silk.NET.Windowing.Sdl" />
+    <PackageReference Include="SkiaSharp" />
   </ItemGroup>
 </Project>

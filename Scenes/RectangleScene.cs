@@ -181,11 +181,12 @@ public class RectangleScene : BaseScene
 
     protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)
     {
+        var backBuffer = _graphicsDevice.GetBackBuffer(imageIndex);
         _graphicsDevice.BeginCommandBuffer(commandBuffer);
         {
-            _graphicsDevice.ImageBarrier(commandBuffer, imageIndex, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
+            _graphicsDevice.ImageBarrier(commandBuffer, backBuffer, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
 
-            _graphicsDevice.BeginRendering(commandBuffer, imageIndex);
+            _graphicsDevice.BeginRendering(commandBuffer, backBuffer);
             {
                 _graphicsDevice.BindGraphicsPipeline(commandBuffer, _rectangleGraphicsPipeline);
 
@@ -197,7 +198,7 @@ public class RectangleScene : BaseScene
 
             _graphicsDevice.EndRendering(commandBuffer);
 
-            _graphicsDevice.ImageBarrier(commandBuffer, imageIndex, ImageLayout.ColorAttachmentOptimal, ImageLayout.Present);
+            _graphicsDevice.ImageBarrier(commandBuffer, backBuffer, ImageLayout.ColorAttachmentOptimal, ImageLayout.Present);
         }
         _graphicsDevice.EndCommandBuffer(commandBuffer);
     }

@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
 using Silk.NET.Maths;
+using SkiaSharp;
 using YASV.RHI;
 
 namespace YASV.Scenes;
 
 [Scene]
-public class ProjectionScene : BaseScene
+public class TextureMappingScene : BaseScene
 {
     private static class MathHelper
     {
@@ -15,12 +16,13 @@ public class ProjectionScene : BaseScene
         }
     }
 
-    private readonly GraphicsPipelineLayout _projectionGraphicsPipelineLayout;
-    private readonly GraphicsPipelineDesc _projectionGraphicsPipelineDesc;
-    private readonly GraphicsPipeline _projectionGraphicsPipeline;
-    private readonly VertexBuffer _projectionVertexBuffer;
-    private readonly IndexBuffer _projectionIndexBuffer;
-    private readonly ConstantBuffer[] _projectionConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
+    private readonly GraphicsPipelineLayout _textureMappingGraphicsPipelineLayout;
+    private readonly GraphicsPipelineDesc _textureMappingGraphicsPipelineDesc;
+    private readonly GraphicsPipeline _textureMappingGraphicsPipeline;
+    private readonly VertexBuffer _textureMappingVertexBuffer;
+    private readonly IndexBuffer _textureMappingIndexBuffer;
+    private readonly ConstantBuffer[] _textureMappingConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
+    private readonly Texture _texture;
 
     private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
     {
@@ -133,14 +135,14 @@ public class ProjectionScene : BaseScene
 
     private readonly short[] _indices = [0, 1, 2, 2, 3, 0];
 
-    public ProjectionScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
+    public TextureMappingScene(GraphicsDevice graphicsDevice) : base(graphicsDevice)
     {
         _graphicsDevice = graphicsDevice;
 
         var vertexShader = _graphicsDevice.CreateShader("Shaders/projection.vert.hlsl", ShaderStage.Vertex);
         var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", ShaderStage.Pixel);
 
-        _projectionGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
+        _textureMappingGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
             .SetVertexShader(vertexShader)
             .SetPixelShader(fragmentShader)
             .SetVertexInputState(new()
@@ -191,7 +193,7 @@ public class ProjectionScene : BaseScene
             })
             .Build();
 
-        _projectionGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
+        _textureMappingGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
         {
             SetLayouts = [new() { Bindings = [
                 new() {
@@ -204,13 +206,13 @@ public class ProjectionScene : BaseScene
             }],
             PushConstantRanges = null
         });
-        _projectionGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_projectionGraphicsPipelineDesc, _projectionGraphicsPipelineLayout);
+        _textureMappingGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_textureMappingGraphicsPipelineDesc, _textureMappingGraphicsPipelineLayout);
 
         int vertexBufferSize = Marshal.SizeOf<Vertex>() * _vertices.Length;
-        _projectionVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
+        _textureMappingVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
 
         int indexBufferSize = sizeof(short) * _indices.Length;
-        _projectionIndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
+        _textureMappingIndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
 
         var vertexData = new byte[Marshal.SizeOf<Vertex>() * _vertices.Length];
         for (int i = 0; i < _vertices.Length; i++)
@@ -221,28 +223,35 @@ public class ProjectionScene : BaseScene
         var indexData = new byte[sizeof(short) * _indices.Length];
         System.Buffer.BlockCopy(_indices, 0, indexData, 0, indexData.Length);
 
-        _graphicsDevice.CopyDataToVertexBuffer(_projectionVertexBuffer, vertexData);
-        _graphicsDevice.CopyDataToIndexBuffer(_projectionIndexBuffer, indexData);
+        _graphicsDevice.CopyDataToVertexBuffer(_textureMappingVertexBuffer, vertexData);
+        _graphicsDevice.CopyDataToIndexBuffer(_textureMappingIndexBuffer, indexData);
 
-        for (int i = 0; i < _projectionConstantBuffers.Length; i++)
+        for (int i = 0; i < _textureMappingConstantBuffers.Length; i++)
         {
-            _projectionConstantBuffers[i] = graphicsDevice.CreateConstantBuffer(Marshal.SizeOf<UniformBufferObject>());
+            _textureMappingConstantBuffers[i] = graphicsDevice.CreateConstantBuffer(Marshal.SizeOf<UniformBufferObject>());
         }
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
 
         DisposeUnmanaged += () =>
         {
-            _graphicsDevice.DestroyGraphicsPipelines([_projectionGraphicsPipeline]);
-            _graphicsDevice.DestroyGraphicsPipelineLayouts([_projectionGraphicsPipelineLayout]);
-            _graphicsDevice.DestroyVertexBuffer(_projectionVertexBuffer);
-            _graphicsDevice.DestroyIndexBuffer(_projectionIndexBuffer);
+            _graphicsDevice.DestroyGraphicsPipelines([_textureMappingGraphicsPipeline]);
+            _graphicsDevice.DestroyGraphicsPipelineLayouts([_textureMappingGraphicsPipelineLayout]);
+            _graphicsDevice.DestroyVertexBuffer(_textureMappingVertexBuffer);
+            _graphicsDevice.DestroyIndexBuffer(_textureMappingIndexBuffer);
 
-            foreach (var constantBuffer in _projectionConstantBuffers)
+            foreach (var constantBuffer in _textureMappingConstantBuffers)
             {
                 _graphicsDevice.DestroyConstantBuffer(constantBuffer);
             }
+
+            _graphicsDevice.DestoryTexture(_texture!);
         };
+
+        var data = File.ReadAllBytes("Assets/texture.jpg");
+        var image = SKImage.FromEncodedData(data);
+
+        _texture = _graphicsDevice.CreateTextureFromImage(image);
     }
 
     protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)
@@ -254,7 +263,7 @@ public class ProjectionScene : BaseScene
 
             _graphicsDevice.BeginRendering(commandBuffer, backBuffer);
             {
-                _graphicsDevice.BindGraphicsPipeline(commandBuffer, _projectionGraphicsPipeline);
+                _graphicsDevice.BindGraphicsPipeline(commandBuffer, _textureMappingGraphicsPipeline);
 
                 var ubo = new UniformBufferObject()
                 {
@@ -265,18 +274,18 @@ public class ProjectionScene : BaseScene
 
                 var frameIndex = _currentFrame % Constants.MaxFramesInFlight;
 
-                var cb = _projectionConstantBuffers[frameIndex];
+                var cb = _textureMappingConstantBuffers[frameIndex];
                 _graphicsDevice.CopyDataToConstantBuffer(cb, ubo.Bytes);
 
                 var descriptorWriter = _graphicsDevice.GetDescriptorWriter();
-                var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _projectionGraphicsPipelineLayout);
+                var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _textureMappingGraphicsPipelineLayout);
                 _graphicsDevice.BindConstantBuffer(descriptorWriter, 0, cb, cb.Size, 0, DescriptorType.UniformBuffer);
                 _graphicsDevice.UpdateDescriptorSet(descriptorWriter, descriptorSet);
-                _graphicsDevice.BindDescriptorSet(commandBuffer, _projectionGraphicsPipelineLayout, descriptorSet);
+                _graphicsDevice.BindDescriptorSet(commandBuffer, _textureMappingGraphicsPipelineLayout, descriptorSet);
 
                 _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
-                _graphicsDevice.BindVertexBuffers(commandBuffer, [_projectionVertexBuffer]);
-                _graphicsDevice.BindIndexBuffer(commandBuffer, _projectionIndexBuffer, IndexType.Uint16);
+                _graphicsDevice.BindVertexBuffers(commandBuffer, [_textureMappingVertexBuffer]);
+                _graphicsDevice.BindIndexBuffer(commandBuffer, _textureMappingIndexBuffer, IndexType.Uint16);
                 _graphicsDevice.DrawIndexed(commandBuffer, (uint)_indices.Length, 1, 0, 0, 0);
             }
 
