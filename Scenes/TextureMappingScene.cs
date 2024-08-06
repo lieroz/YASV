@@ -25,13 +25,15 @@ public class TextureMappingScene : BaseScene
     private readonly Texture _texture;
     private readonly TextureSampler _textureSampler;
 
-    private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
+    private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color, Vector2D<float> textureCoordinate)
     {
         private readonly Vector2D<float> _position = position;
         private readonly Vector3D<float> _color = color;
+        private readonly Vector2D<float> _textureCoordinate = textureCoordinate;
 
         public readonly Vector2D<float> Position { get => _position; }
         public readonly Vector3D<float> Color { get => _color; }
+        public readonly Vector2D<float> TextureCoordinate { get => _textureCoordinate; }
 
         public static VertexInputBindingDesc[] BindingDescriptions
         {
@@ -66,6 +68,13 @@ public class TextureMappingScene : BaseScene
                         Location = 1,
                         Format = Format.R32G32B32_Float,
                         Offset = (int)Marshal.OffsetOf<Vertex>("_color")
+                    },
+                    new()
+                    {
+                        Binding = 0,
+                        Location = 2,
+                        Format = Format.R32G32_Float,
+                        Offset = (int)Marshal.OffsetOf<Vertex>("_textureCoordinate")
                     }
                 ];
             }
@@ -77,9 +86,10 @@ public class TextureMappingScene : BaseScene
             {
                 var bytes = new byte[Marshal.SizeOf<Vertex>()];
                 {
-                    var floats = new float[5];
+                    var floats = new float[7];
                     _position.CopyTo(floats, 0);
                     _color.CopyTo(floats, 2);
+                    _textureCoordinate.CopyTo(floats, 5);
                     System.Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
                 }
                 return bytes;
@@ -89,10 +99,10 @@ public class TextureMappingScene : BaseScene
 
     private readonly Vertex[] _vertices =
     [
-        new(new(-0.5f, -0.5f), new(1.0f, 0.0f, 0.0f)),
-        new(new(0.5f, -0.5f), new(0.0f, 1.0f, 0.0f)),
-        new(new(0.5f, 0.5f), new(0.0f, 0.0f, 1.0f)),
-        new(new(-0.5f, 0.5f), new(1.0f, 1.0f, 1.0f))
+        new(new(-0.5f, -0.5f), new(1.0f, 0.0f, 0.0f), new(1.0f, 0.0f)),
+        new(new(0.5f, -0.5f), new(0.0f, 1.0f, 0.0f), new(0.0f, 0.0f)),
+        new(new(0.5f, 0.5f), new(0.0f, 0.0f, 1.0f), new(0.0f, 1.0f)),
+        new(new(-0.5f, 0.5f), new(1.0f, 1.0f, 1.0f), new(1.0f, 1.0f))
     ];
 
     // TODO: generate UBO types?
@@ -140,8 +150,8 @@ public class TextureMappingScene : BaseScene
     {
         _graphicsDevice = graphicsDevice;
 
-        var vertexShader = _graphicsDevice.CreateShader("Shaders/projection.vert.hlsl", ShaderStage.Vertex);
-        var fragmentShader = _graphicsDevice.CreateShader("Shaders/triangle.frag.hlsl", ShaderStage.Pixel);
+        var vertexShader = _graphicsDevice.CreateShader("Shaders/textureMapping.vert.hlsl", ShaderStage.Vertex);
+        var fragmentShader = _graphicsDevice.CreateShader("Shaders/textureMapping.frag.hlsl", ShaderStage.Pixel);
 
         _textureMappingGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
             .SetVertexShader(vertexShader)
