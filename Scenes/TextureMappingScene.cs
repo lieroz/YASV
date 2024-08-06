@@ -23,6 +23,7 @@ public class TextureMappingScene : BaseScene
     private readonly IndexBuffer _textureMappingIndexBuffer;
     private readonly ConstantBuffer[] _textureMappingConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
     private readonly Texture _texture;
+    private readonly TextureSampler _textureSampler;
 
     private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
     {
@@ -246,12 +247,14 @@ public class TextureMappingScene : BaseScene
             }
 
             _graphicsDevice.DestoryTexture(_texture!);
+            _graphicsDevice.DestroyTextureSampler(_textureSampler!);
         };
 
         var data = File.ReadAllBytes("Assets/texture.jpg");
         var image = SKImage.FromEncodedData(data);
 
         _texture = _graphicsDevice.CreateTextureFromImage(image);
+        _textureSampler = _graphicsDevice.CreateTextureSampler();
     }
 
     protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)

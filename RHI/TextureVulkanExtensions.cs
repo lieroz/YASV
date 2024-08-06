@@ -9,11 +9,21 @@ internal class VulkanTextureWrapper(Silk.NET.Vulkan.Image image, Silk.NET.Vulkan
     public Silk.NET.Vulkan.ImageView ImageView { get; private set; } = imageView;
 }
 
+internal class VulkanTextureSamplerWrapper(Silk.NET.Vulkan.Sampler sampler) : TextureSampler
+{
+    public Silk.NET.Vulkan.Sampler Sampler { get; private set; } = sampler;
+}
+
 internal static class TextureVulkanExtensions
 {
     internal static VulkanTextureWrapper ToVulkanTexture(this Texture texture)
     {
         return (VulkanTextureWrapper)texture;
+    }
+
+    internal static Silk.NET.Vulkan.Sampler ToVulkanTextureSampler(this TextureSampler textureSampler)
+    {
+        return ((VulkanTextureSamplerWrapper)textureSampler).Sampler;
     }
 
     internal static Silk.NET.Vulkan.Format ToVulkanFormat(this SKColorType type)

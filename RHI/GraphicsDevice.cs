@@ -114,4 +114,7 @@ public abstract class GraphicsDevice(IView view)
 
     public abstract Texture CreateTextureFromImage(SKImage image);
     public abstract void DestoryTexture(Texture texture);
+
+    public abstract TextureSampler CreateTextureSampler();
+    public abstract void DestroyTextureSampler(TextureSampler textureSampler);
 }

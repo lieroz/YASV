@@ -520,7 +520,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             swapchainIsAdequate = swapchainSupport.Formats != null && swapchainSupport.PresentModes != null;
         }
 
-        return queueFamiliyIndices.IsComplete() && swapchainIsAdequate;
+        var props = _vk.GetPhysicalDeviceFeatures(physicalDevice);
+        return queueFamiliyIndices.IsComplete() && swapchainIsAdequate && props.SamplerAnisotropy;
     }
 
     private unsafe void PickPhysicalDevice()
@@ -586,7 +587,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             deviceQueueCreateInfos.Add(deviceQueueCreateInfo);
         }
 
-        PhysicalDeviceFeatures physicalDeviceFeatures = new();
+        PhysicalDeviceFeatures physicalDeviceFeatures = new()
+        {
+            SamplerAnisotropy = true
+        };
 
         fixed (DeviceQueueCreateInfo* deviceQueueCreateInfosPtr = deviceQueueCreateInfos.ToArray())
         {
@@ -804,36 +808,36 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
 
+    private unsafe ImageView CreateImageViewInternal(Image image, Silk.NET.Vulkan.Format format)
+    {
+        var viewInfo = new ImageViewCreateInfo()
+        {
+            SType = StructureType.ImageViewCreateInfo,
+            Image = image,
+            ViewType = ImageViewType.Type2D,
+            Format = format,
+            SubresourceRange = new()
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        var result = _vk.CreateImageView(_device, ref viewInfo, null, out var view);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create image view: {result}.");
+
+        return view;
+    }
+
     private unsafe void CreateImageViews()
     {
         _swapchainImageViews = new ImageView[_swapchainImages!.Length];
         for (uint i = 0; i < _swapchainImages.Length; i++)
         {
-            ImageViewCreateInfo imageViewCreateInfo = new()
-            {
-                SType = StructureType.ImageViewCreateInfo,
-                Image = _swapchainImages[i],
-                ViewType = ImageViewType.Type2D,
-                Format = _swapchainImageFormat,
-                Components = new()
-                {
-                    R = ComponentSwizzle.R,
-                    G = ComponentSwizzle.G,
-                    B = ComponentSwizzle.B,
-                    A = ComponentSwizzle.A
-                },
-                SubresourceRange = new()
-                {
-                    AspectMask = ImageAspectFlags.ColorBit,
-                    BaseMipLevel = 0,
-                    LevelCount = 1,
-                    BaseArrayLayer = 0,
-                    LayerCount = 1
-                }
-            };
-
-            var result = _vk.CreateImageView(_device, &imageViewCreateInfo, null, out _swapchainImageViews[i]);
-            VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create image view: {result}.");
+            _swapchainImageViews[i] = CreateImageViewInternal(_swapchainImages[i], _swapchainImageFormat);
         }
     }
 
@@ -1066,18 +1070,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return new VulkanTextureWrapper(_swapchainImages![index], default, _swapchainImageViews![index]);
     }
 
-    // TODO: add options and implement normal layout transitions
-    public override unsafe void ImageBarrier(CommandBuffer commandBuffer, Texture texture, ImageLayout oldLayout, ImageLayout newLayout)
+    private unsafe void ImageBarrierInternal(Silk.NET.Vulkan.CommandBuffer commandBuffer, Image image, Silk.NET.Vulkan.ImageLayout oldLayout, Silk.NET.Vulkan.ImageLayout newLayout)
     {
-        var vkOldImageLayout = oldLayout.ToVulkanImageLayout();
-        var vkNewImageLayout = newLayout.ToVulkanImageLayout();
-
         ImageMemoryBarrier barrier = new()
         {
             SType = StructureType.ImageMemoryBarrier,
-            OldLayout = vkOldImageLayout,
-            NewLayout = vkNewImageLayout,
-            Image = texture.ToVulkanTexture().Image,
+            OldLayout = oldLayout,
+            NewLayout = newLayout,
+            Image = image,
             SubresourceRange = new()
             {
                 AspectMask = ImageAspectFlags.ColorBit,
@@ -1091,7 +1091,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var srcPipelineStageFlags = PipelineStageFlags.ColorAttachmentOutputBit;
         var dstPipelineStageFlags = PipelineStageFlags.BottomOfPipeBit;
 
-        if (vkOldImageLayout == Silk.NET.Vulkan.ImageLayout.Undefined && vkNewImageLayout == Silk.NET.Vulkan.ImageLayout.TransferDstOptimal)
+        if (oldLayout == Silk.NET.Vulkan.ImageLayout.Undefined && newLayout == Silk.NET.Vulkan.ImageLayout.TransferDstOptimal)
         {
             barrier.SrcAccessMask = AccessFlags.None;
             barrier.DstAccessMask = AccessFlags.TransferWriteBit;
@@ -1099,7 +1099,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             srcPipelineStageFlags = PipelineStageFlags.TopOfPipeBit;
             dstPipelineStageFlags = PipelineStageFlags.TransferBit;
         }
-        else if (vkOldImageLayout == Silk.NET.Vulkan.ImageLayout.TransferDstOptimal && vkNewImageLayout == Silk.NET.Vulkan.ImageLayout.ShaderReadOnlyOptimal)
+        else if (oldLayout == Silk.NET.Vulkan.ImageLayout.TransferDstOptimal && newLayout == Silk.NET.Vulkan.ImageLayout.ShaderReadOnlyOptimal)
         {
             barrier.SrcAccessMask = AccessFlags.TransferWriteBit;
             barrier.DstAccessMask = AccessFlags.ShaderReadBit;
@@ -1108,7 +1108,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             dstPipelineStageFlags = PipelineStageFlags.FragmentShaderBit;
         }
 
-        _vk.CmdPipelineBarrier(commandBuffer.ToVulkanCommandBuffer(), srcPipelineStageFlags, dstPipelineStageFlags, 0, 0, null, 0, null, 1, &barrier);
+        _vk.CmdPipelineBarrier(commandBuffer, srcPipelineStageFlags, dstPipelineStageFlags, 0, 0, null, 0, null, 1, &barrier);
+    }
+
+    // TODO: add options and implement normal layout transitions
+    public override unsafe void ImageBarrier(CommandBuffer commandBuffer, Texture texture, ImageLayout oldLayout, ImageLayout newLayout)
+    {
+        ImageBarrierInternal(commandBuffer.ToVulkanCommandBuffer(), texture.ToVulkanTexture().Image, oldLayout.ToVulkanImageLayout(), newLayout.ToVulkanImageLayout());
     }
 
     public override unsafe void BeginRendering(CommandBuffer commandBuffer, Texture texture)
@@ -1692,7 +1698,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     }
 
     // TODO: should destroy previous steps if fail?
-    private unsafe Texture CreateImage(int width, int height, Silk.NET.Vulkan.Format format, ImageTiling tiling, ImageUsageFlags usageFlags, MemoryPropertyFlags memoryPropertyFlags)
+    private unsafe Tuple<Image, DeviceMemory> CreateImage(int width, int height, Silk.NET.Vulkan.Format format, ImageTiling tiling, ImageUsageFlags usageFlags, MemoryPropertyFlags memoryPropertyFlags)
     {
         var imageInfo = new ImageCreateInfo()
         {
@@ -1731,14 +1737,15 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         result = _vk.BindImageMemory(_device, vkImage, vkImageMemory, 0);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't bind image memory: {result}.");
 
-        return new VulkanTextureWrapper(vkImage, vkImageMemory, default /* TODO: add image view */);
+        return new(vkImage, vkImageMemory);
     }
 
-    public unsafe override Texture CreateTextureFromImage(SKImage image)
+    public override unsafe Texture CreateTextureFromImage(SKImage image)
     {
         var imageSize = image.Info.BytesSize;
         var stagingBuffer = GetStagingBuffer(imageSize);
         var vkStagingBuffer = stagingBuffer.ToVulkanStagingBuffer();
+        var vkFormat = image.ColorType.ToVulkanFormat();
 
         void* mappedMemory = null;
         var result = _vk.MapMemory(_device, vkStagingBuffer.DeviceMemory, 0, (ulong)stagingBuffer.Size, 0, ref mappedMemory);
@@ -1749,16 +1756,15 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         ReturnStagingBuffer(stagingBuffer);
 
-        var texture = CreateImage(
+        var (texture, memory) = CreateImage(
             image.Width,
             image.Height,
-            image.ColorType.ToVulkanFormat(),
+            vkFormat,
             ImageTiling.Optimal,
             ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit,
             MemoryPropertyFlags.DeviceLocalBit);
 
-        var transferComandBuffer = GetTransferCommandBuffer();
-        var commandBuffer = new VulkanCommandBufferWrapper(transferComandBuffer);
+        var commandBuffer = GetTransferCommandBuffer();
 
         var beginInfo = new CommandBufferBeginInfo()
         {
@@ -1766,20 +1772,20 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             Flags = CommandBufferUsageFlags.OneTimeSubmitBit
         };
 
-        result = _vk.BeginCommandBuffer(transferComandBuffer, ref beginInfo);
+        result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
         VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
 
-        ImageBarrier(commandBuffer, texture, ImageLayout.Undefined, ImageLayout.TransferDstOptimal);
-        CopyBufferToImageInternal(transferComandBuffer, vkStagingBuffer.Buffer, texture.ToVulkanTexture().Image, image.Width, image.Height);
-        ImageBarrier(commandBuffer, texture, ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal);
+        ImageBarrierInternal(commandBuffer, texture, Silk.NET.Vulkan.ImageLayout.Undefined, Silk.NET.Vulkan.ImageLayout.TransferDstOptimal);
+        CopyBufferToImageInternal(commandBuffer, vkStagingBuffer.Buffer, texture, image.Width, image.Height);
+        ImageBarrierInternal(commandBuffer, texture, Silk.NET.Vulkan.ImageLayout.TransferDstOptimal, Silk.NET.Vulkan.ImageLayout.ShaderReadOnlyOptimal);
 
-        _vk.EndCommandBuffer(transferComandBuffer);
+        _vk.EndCommandBuffer(commandBuffer);
 
         var submitInfo = new SubmitInfo()
         {
             SType = StructureType.SubmitInfo,
             CommandBufferCount = 1,
-            PCommandBuffers = &transferComandBuffer
+            PCommandBuffers = &commandBuffer
         };
 
         result = _vk.QueueSubmit(_transferQueue, 1, &submitInfo, default);
@@ -1789,16 +1795,52 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         result = _vk.QueueWaitIdle(_transferQueue);
         VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
 
-        ReturnTransferCommandBuffer(transferComandBuffer);
+        ReturnTransferCommandBuffer(commandBuffer);
 
-        return texture;
+        var view = CreateImageViewInternal(texture, vkFormat);
+
+        return new VulkanTextureWrapper(texture, memory, view);
     }
 
     public override unsafe void DestoryTexture(Texture texture)
     {
         var vkTexture = texture.ToVulkanTexture();
-        // _vk.DestroyImageView(_device, vkTexture.ImageView, null);
+        _vk.DestroyImageView(_device, vkTexture.ImageView, null);
         _vk.DestroyImage(_device, vkTexture.Image, null);
         _vk.FreeMemory(_device, vkTexture.DeviceMemory, null);
+    }
+
+    public override unsafe TextureSampler CreateTextureSampler()
+    {
+        var properties = _vk.GetPhysicalDeviceProperties(_physicalDevice);
+        var samplerInfo = new SamplerCreateInfo()
+        {
+            SType = StructureType.SamplerCreateInfo,
+            MagFilter = Filter.Linear,
+            MinFilter = Filter.Linear,
+            AddressModeU = SamplerAddressMode.Repeat,
+            AddressModeV = SamplerAddressMode.Repeat,
+            AddressModeW = SamplerAddressMode.Repeat,
+            AnisotropyEnable = true,
+            MaxAnisotropy = properties.Limits.MaxSamplerAnisotropy,
+            BorderColor = BorderColor.IntOpaqueBlack,
+            UnnormalizedCoordinates = false,
+            CompareEnable = false,
+            CompareOp = Silk.NET.Vulkan.CompareOp.Always,
+            MipmapMode = SamplerMipmapMode.Linear,
+            MipLodBias = 0,
+            MinLod = 0,
+            MaxLod = 0
+        };
+
+        var result = _vk.CreateSampler(_device, ref samplerInfo, null, out var sampler);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create sampler: '{result}'.");
+
+        return new VulkanTextureSamplerWrapper(sampler);
+    }
+
+    public override unsafe void DestroyTextureSampler(TextureSampler textureSampler)
+    {
+        _vk.DestroySampler(_device, textureSampler.ToVulkanTextureSampler(), null);
     }
 }
