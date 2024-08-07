@@ -77,6 +77,7 @@ public abstract class GraphicsDevice(IView view)
     public abstract DescriptorWriter GetDescriptorWriter();
     public abstract DescriptorSet GetDescriptorSet(int frameIndex, GraphicsPipelineLayout layout);
     public abstract void BindConstantBuffer(DescriptorWriter writer, int binding, ConstantBuffer buffer, int size, int offset, DescriptorType type);
+    public abstract void BindTexture(DescriptorWriter writer, int binding, Texture texture, TextureSampler sampler, ImageLayout layout, DescriptorType type);
     public abstract void UpdateDescriptorSet(DescriptorWriter writer, DescriptorSet descriptorSet);
     public abstract void BindDescriptorSet(CommandBuffer commandBuffer, GraphicsPipelineLayout layout, DescriptorSet set);
 

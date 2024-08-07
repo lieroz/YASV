@@ -94,17 +94,12 @@ public struct ColorBlendState
     public float[] BlendConstants { get; set; }
 }
 
-public struct Sampler
-{
-}
-
 public struct DescriptorSetLayoutBindingDesc
 {
     public int Binding { get; set; }
     public DescriptorType DescriptorType { get; set; }
     public int DescriptorCount { get; set; }
     public ShaderStage[] ShaderStages { get; set; }
-    public Sampler[]? Samplers { get; set; }
 }
 
 public struct DescriptorSetLayoutDesc

@@ -211,8 +211,13 @@ public class TextureMappingScene : BaseScene
                     Binding = 0,
                     DescriptorType = DescriptorType.UniformBuffer,
                     DescriptorCount = 1,
-                    ShaderStages = [ShaderStage.Vertex],
-                    Samplers = null
+                    ShaderStages = [ShaderStage.Vertex]
+                },
+                new() {
+                    Binding = 1,
+                    DescriptorType = DescriptorType.CombinedImageSampler,
+                    DescriptorCount = 1,
+                    ShaderStages = [ShaderStage.Pixel]
                 }]
             }],
             PushConstantRanges = null
@@ -293,6 +298,7 @@ public class TextureMappingScene : BaseScene
                 var descriptorWriter = _graphicsDevice.GetDescriptorWriter();
                 var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _textureMappingGraphicsPipelineLayout);
                 _graphicsDevice.BindConstantBuffer(descriptorWriter, 0, cb, cb.Size, 0, DescriptorType.UniformBuffer);
+                _graphicsDevice.BindTexture(descriptorWriter, 1, _texture, _textureSampler, ImageLayout.ShaderReadOnlyOptimal, DescriptorType.CombinedImageSampler);
                 _graphicsDevice.UpdateDescriptorSet(descriptorWriter, descriptorSet);
                 _graphicsDevice.BindDescriptorSet(commandBuffer, _textureMappingGraphicsPipelineLayout, descriptorSet);
 

@@ -198,8 +198,7 @@ public class ProjectionScene : BaseScene
                     Binding = 0,
                     DescriptorType = DescriptorType.UniformBuffer,
                     DescriptorCount = 1,
-                    ShaderStages = [ShaderStage.Vertex],
-                    Samplers = null
+                    ShaderStages = [ShaderStage.Vertex]
                 }]
             }],
             PushConstantRanges = null

@@ -169,8 +169,8 @@ internal class VulkanDescriptorWriter : DescriptorWriter
 {
     private readonly List<DescriptorImageInfo> _imageInfos = [];
     private readonly List<DescriptorBufferInfo> _bufferInfos = [];
-    private List<WriteDescriptorSet> _imageWrites = [];
-    private List<WriteDescriptorSet> _bufferWrites = [];
+    private readonly List<WriteDescriptorSet> _imageWrites = [];
+    private readonly List<WriteDescriptorSet> _bufferWrites = [];
 
     public unsafe void WriteImage(int binding, ImageView image, Silk.NET.Vulkan.Sampler sampler, Silk.NET.Vulkan.ImageLayout layout, Silk.NET.Vulkan.DescriptorType type)
     {
@@ -1207,6 +1207,11 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         writer.ToVulkanDescriptorWriter().WriteBuffer(binding, buffer.ToVulkanConstantBuffer().Buffer, size, offset, type.ToVulkanDescriptorType());
     }
 
+    public override void BindTexture(DescriptorWriter writer, int binding, Texture texture, TextureSampler sampler, ImageLayout layout, DescriptorType type)
+    {
+        writer.ToVulkanDescriptorWriter().WriteImage(binding, texture.ToVulkanTexture().ImageView, sampler.ToVulkanTextureSampler(), layout.ToVulkanImageLayout(), type.ToVulkanDescriptorType());
+    }
+
     public override DescriptorSet GetDescriptorSet(int frameIndex, GraphicsPipelineLayout layout)
     {
         var layouts = layout.ToVulkanGraphicsPipelineLayout().DescriptorSetLayouts;
@@ -1751,7 +1756,9 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var result = _vk.MapMemory(_device, vkStagingBuffer.DeviceMemory, 0, (ulong)stagingBuffer.Size, 0, ref mappedMemory);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't map buffer memory: {result}.");
 
-        System.Buffer.MemoryCopy((void*)image.Handle, mappedMemory, imageSize, imageSize);
+        var bitmap = SKBitmap.Decode(image.EncodedData);
+        Marshal.Copy(bitmap.Bytes, 0, (nint)mappedMemory, imageSize);
+
         _vk.UnmapMemory(_device, vkStagingBuffer.DeviceMemory);
 
         ReturnStagingBuffer(stagingBuffer);

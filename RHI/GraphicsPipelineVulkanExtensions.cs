@@ -463,12 +463,6 @@ internal static class GraphicsPipelineVulkanExtensions
         };
     }
 
-    internal static Silk.NET.Vulkan.Sampler ToVulkanSampler(this Sampler sampler)
-    {
-        // TODO:
-        return new();
-    }
-
     internal static unsafe Silk.NET.Vulkan.DescriptorSetLayoutBinding ToVulkanDescriptorSetLayoutBinding(this DescriptorSetLayoutBindingDesc layoutBinding)
     {
         Silk.NET.Vulkan.ShaderStageFlags shaderStageFlags = Silk.NET.Vulkan.ShaderStageFlags.None;
@@ -477,27 +471,14 @@ internal static class GraphicsPipelineVulkanExtensions
             shaderStageFlags |= shaderStage.ToVulkanShaderStage();
         }
 
-        Silk.NET.Vulkan.Sampler[]? vkSamplers = null;
-        if (layoutBinding.Samplers != null)
+        return new()
         {
-            vkSamplers = new Silk.NET.Vulkan.Sampler[layoutBinding.Samplers.Length];
-            for (int i = 0; i < layoutBinding.Samplers.Length; i++)
-            {
-                vkSamplers[i] = layoutBinding.Samplers[i].ToVulkanSampler(); // FIXME
-            }
-        }
-
-        fixed (Silk.NET.Vulkan.Sampler* vkSamplersPtr = vkSamplers)
-        {
-            return new()
-            {
-                Binding = (uint)layoutBinding.Binding,
-                DescriptorType = layoutBinding.DescriptorType.ToVulkanDescriptorType(),
-                DescriptorCount = (uint)layoutBinding.DescriptorCount,
-                StageFlags = shaderStageFlags,
-                PImmutableSamplers = vkSamplersPtr
-            };
-        }
+            Binding = (uint)layoutBinding.Binding,
+            DescriptorType = layoutBinding.DescriptorType.ToVulkanDescriptorType(),
+            DescriptorCount = (uint)layoutBinding.DescriptorCount,
+            StageFlags = shaderStageFlags,
+            PImmutableSamplers = null
+        };
     }
 
     internal static unsafe Silk.NET.Vulkan.DescriptorSetLayoutCreateInfo ToVulkanDescriptorSetLayout(this DescriptorSetLayoutDesc layout)
