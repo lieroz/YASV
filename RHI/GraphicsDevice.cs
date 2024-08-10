@@ -1,6 +1,5 @@
 using System.Numerics;
 using Silk.NET.SDL;
-using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 using SkiaSharp;
 
@@ -11,6 +10,7 @@ public abstract class GraphicsDevice(IView view)
     protected readonly IView _view = view;
     private readonly CommandBufferPool _commandBufferPool = new();
     private readonly StagingBufferPool _stagingBufferPool = new();
+    public Action? RecreateTexturesAction { get; set; }
 
     public abstract void Create(Sdl sdlApi);
     public void Destroy()
@@ -66,7 +66,7 @@ public abstract class GraphicsDevice(IView view)
     // TODO: generalize this, add more options
     public abstract void ImageBarrier(CommandBuffer commandBuffer, Texture texture, ImageLayout oldLayout, ImageLayout newLayout);
 
-    public abstract void BeginRendering(CommandBuffer commandBuffer, Texture texture);
+    public abstract unsafe void BeginRendering(CommandBuffer commandBuffer, Texture colorTexture, Texture? depthTexture = null);
     public abstract void EndRendering(CommandBuffer commandBuffer);
 
     public abstract void BeginCommandBuffer(CommandBuffer commandBuffer);
@@ -115,6 +115,7 @@ public abstract class GraphicsDevice(IView view)
     public abstract void BindIndexBuffer(CommandBuffer commandBuffer, IndexBuffer buffer, IndexType indexType);
 
     public abstract Texture CreateTextureFromImage(SKImage image);
+    public abstract Texture CreateDepthTexture();
     public abstract void DestoryTexture(Texture texture);
 
     public abstract TextureSampler CreateTextureSampler(TextureSamplerDesc desc);

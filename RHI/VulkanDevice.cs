@@ -739,6 +739,33 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         }
     }
 
+    private Silk.NET.Vulkan.Format FindSupportedFormat(Silk.NET.Vulkan.Format[] candidates, ImageTiling tiling, FormatFeatureFlags features)
+    {
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            var format = candidates[i];
+            _vk.GetPhysicalDeviceFormatProperties(_physicalDevice, format, out var props);
+
+            if ((tiling == ImageTiling.Linear && (props.LinearTilingFeatures & features) == features)
+             || (tiling == ImageTiling.Optimal && (props.OptimalTilingFeatures & features) == features))
+            {
+                return format;
+            }
+        }
+        throw new NotSupportedException("Couldn't find supported format.");
+    }
+
+    private Silk.NET.Vulkan.Format FindDepthFormat()
+    {
+        return FindSupportedFormat([Silk.NET.Vulkan.Format.D32Sfloat, Silk.NET.Vulkan.Format.D32SfloatS8Uint, Silk.NET.Vulkan.Format.D24UnormS8Uint],
+            ImageTiling.Optimal, FormatFeatureFlags.DepthStencilAttachmentBit);
+    }
+
+    private bool HasStencilComponent(Silk.NET.Vulkan.Format format)
+    {
+        return format == Silk.NET.Vulkan.Format.D32SfloatS8Uint || format == Silk.NET.Vulkan.Format.D24UnormS8Uint;
+    }
+
     private unsafe void CreateSwapchain(IView view)
     {
         var swapchainSupport = QuerySwapChainSupport(_physicalDevice);
@@ -808,7 +835,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private unsafe void DestroySwapchain() => _khrSwapchain!.DestroySwapchain(_device, _swapchain, null);
 
-    private unsafe ImageView CreateImageViewInternal(Image image, Silk.NET.Vulkan.Format format)
+    private unsafe ImageView CreateImageViewInternal(Image image, Silk.NET.Vulkan.Format format, ImageAspectFlags aspectFlags)
     {
         var viewInfo = new ImageViewCreateInfo()
         {
@@ -818,7 +845,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             Format = format,
             SubresourceRange = new()
             {
-                AspectMask = ImageAspectFlags.ColorBit,
+                AspectMask = aspectFlags,
                 BaseMipLevel = 0,
                 LevelCount = 1,
                 BaseArrayLayer = 0,
@@ -837,7 +864,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _swapchainImageViews = new ImageView[_swapchainImages!.Length];
         for (uint i = 0; i < _swapchainImages.Length; i++)
         {
-            _swapchainImageViews[i] = CreateImageViewInternal(_swapchainImages[i], _swapchainImageFormat);
+            _swapchainImageViews[i] = CreateImageViewInternal(_swapchainImages[i], _swapchainImageFormat, ImageAspectFlags.ColorBit);
         }
     }
 
@@ -971,6 +998,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         CreateSwapchain(_view);
         CreateImageViews();
+
+        RecreateTexturesAction?.Invoke();
     }
 
     public override unsafe int BeginFrameInternal(int frameIndex)
@@ -1070,7 +1099,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return new VulkanTextureWrapper(_swapchainImages![index], default, _swapchainImageViews![index]);
     }
 
-    private unsafe void ImageBarrierInternal(Silk.NET.Vulkan.CommandBuffer commandBuffer, Image image, Silk.NET.Vulkan.ImageLayout oldLayout, Silk.NET.Vulkan.ImageLayout newLayout)
+    private unsafe void ImageBarrierInternal(Silk.NET.Vulkan.CommandBuffer commandBuffer, Image image, Silk.NET.Vulkan.ImageLayout oldLayout, Silk.NET.Vulkan.ImageLayout newLayout, bool hasStencilComponent = false)
     {
         ImageMemoryBarrier barrier = new()
         {
@@ -1087,6 +1116,15 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                 LayerCount = 1
             }
         };
+
+        if (newLayout == Silk.NET.Vulkan.ImageLayout.DepthStencilAttachmentOptimal)
+        {
+            barrier.SubresourceRange.AspectMask = ImageAspectFlags.DepthBit;
+            if (hasStencilComponent)
+            {
+                barrier.SubresourceRange.AspectMask |= ImageAspectFlags.StencilBit;
+            }
+        }
 
         var srcPipelineStageFlags = PipelineStageFlags.ColorAttachmentOutputBit;
         var dstPipelineStageFlags = PipelineStageFlags.BottomOfPipeBit;
@@ -1107,6 +1145,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             srcPipelineStageFlags = PipelineStageFlags.TransferBit;
             dstPipelineStageFlags = PipelineStageFlags.FragmentShaderBit;
         }
+        else if (oldLayout == Silk.NET.Vulkan.ImageLayout.Undefined && newLayout == Silk.NET.Vulkan.ImageLayout.DepthStencilAttachmentOptimal)
+        {
+            barrier.SrcAccessMask = AccessFlags.None;
+            barrier.DstAccessMask = AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit;
+
+            srcPipelineStageFlags = PipelineStageFlags.TopOfPipeBit;
+            dstPipelineStageFlags = PipelineStageFlags.EarlyFragmentTestsBit;
+        }
 
         _vk.CmdPipelineBarrier(commandBuffer, srcPipelineStageFlags, dstPipelineStageFlags, 0, 0, null, 0, null, 1, &barrier);
     }
@@ -1117,21 +1163,21 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         ImageBarrierInternal(commandBuffer.ToVulkanCommandBuffer(), texture.ToVulkanTexture().Image, oldLayout.ToVulkanImageLayout(), newLayout.ToVulkanImageLayout());
     }
 
-    public override unsafe void BeginRendering(CommandBuffer commandBuffer, Texture texture)
+    public override unsafe void BeginRendering(CommandBuffer commandBuffer, Texture colorTexture, Texture? depthTexture)
     {
         var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
 
-        RenderingAttachmentInfo colorAttachmentInfo = new()
+        var colorAttachmentInfo = new RenderingAttachmentInfo()
         {
             SType = StructureType.RenderingAttachmentInfoKhr,
-            ImageView = texture.ToVulkanTexture().ImageView,
+            ImageView = colorTexture.ToVulkanTexture().ImageView,
             ImageLayout = Silk.NET.Vulkan.ImageLayout.AttachmentOptimalKhr,
             LoadOp = AttachmentLoadOp.Clear,
             StoreOp = AttachmentStoreOp.Store,
             ClearValue = clearColor
         };
 
-        RenderingInfo renderingInfo = new()
+        var renderingInfo = new RenderingInfo()
         {
             SType = StructureType.RenderingInfoKhr,
             RenderArea = new()
@@ -1143,6 +1189,22 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
             ColorAttachmentCount = 1,
             PColorAttachments = &colorAttachmentInfo
         };
+
+        var depthAttachmentInfo = new RenderingAttachmentInfo()
+        {
+            SType = StructureType.RenderingAttachmentInfoKhr
+        };
+        var depthClearColor = new ClearValue(new ClearColorValue(1f, 0f));
+
+        if (depthTexture != null)
+        {
+            depthAttachmentInfo.ImageView = depthTexture.ToVulkanTexture().ImageView;
+            depthAttachmentInfo.ImageLayout = Silk.NET.Vulkan.ImageLayout.DepthStencilAttachmentOptimal;
+            depthAttachmentInfo.LoadOp = AttachmentLoadOp.Clear;
+            depthAttachmentInfo.StoreOp = AttachmentStoreOp.DontCare;
+            depthAttachmentInfo.ClearValue = depthClearColor;
+            renderingInfo.PDepthAttachment = &depthAttachmentInfo;
+        }
 
         _vk.CmdBeginRendering(commandBuffer.ToVulkanCommandBuffer(), ref renderingInfo);
     }
@@ -1320,7 +1382,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         var inputAssemblyState = desc.InputAssemblyState.ToVulkanInputAssemblyState();
         var rasterizationState = desc.RasterizationState.ToVulkanRasterizationState();
         var multisampleState = desc.MultisampleState.ToVulkanMultisampleState();
-        var depthStencilState = desc.DepthStencilState?.ToVulkanDepthStencilState();
 
         var vulkanColorBlendAttachmentStates = new PipelineColorBlendAttachmentState[desc.ColorBlendAttachmentStates.Count];
         for (int i = 0; i < desc.ColorBlendAttachmentStates.Count; i++)
@@ -1363,6 +1424,14 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                     PColorAttachmentFormats = formatPtr
                 };
 
+                PipelineDepthStencilStateCreateInfo depthStencilState;
+                if (desc.DepthStencilState != null)
+                {
+                    depthStencilState = ((DepthStencilState)desc.DepthStencilState).ToVulkanDepthStencilState();
+                    pipelineRenderingCreateInfo.DepthAttachmentFormat = FindDepthFormat();
+                    pipelineRenderingCreateInfo.StencilAttachmentFormat = Silk.NET.Vulkan.Format.Undefined;
+                }
+
                 pipelineInfo = new()
                 {
                     SType = StructureType.GraphicsPipelineCreateInfo,
@@ -1376,7 +1445,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                     PViewportState = &viewportState,
                     PRasterizationState = &rasterizationState,
                     PMultisampleState = &multisampleState,
-                    PDepthStencilState = (PipelineDepthStencilStateCreateInfo*)&depthStencilState,
+                    PDepthStencilState = &depthStencilState,
                     PColorBlendState = &colorBlendState,
                     PDynamicState = &dynamicState,
                     Layout = layout.ToVulkanGraphicsPipelineLayout().PipelineLayout,
@@ -1385,13 +1454,13 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
                     BasePipelineHandle = default,
                     BasePipelineIndex = -1
                 };
+
+                var result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pso);
+                VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
+
+                return new VulkanGraphicsPipelineWrapper(pso);
             }
         }
-
-        var result = _vk.CreateGraphicsPipelines(_device, default, 1, &pipelineInfo, null, out var pso);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create graphics pipelines: {result}.");
-
-        return new VulkanGraphicsPipelineWrapper(pso);
     }
 
     public override unsafe void DestroyGraphicsPipelines(GraphicsPipeline[] pipelines)
@@ -1804,9 +1873,23 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
         ReturnTransferCommandBuffer(commandBuffer);
 
-        var view = CreateImageViewInternal(texture, vkFormat);
+        var view = CreateImageViewInternal(texture, vkFormat, ImageAspectFlags.ColorBit);
 
         return new VulkanTextureWrapper(texture, memory, view);
+    }
+
+    public override unsafe Texture CreateDepthTexture()
+    {
+        var depthFormat = FindDepthFormat();
+        var (image, memory) = CreateImage(
+            (int)_swapchainExtent.Width,
+            (int)_swapchainExtent.Height,
+            depthFormat,
+            ImageTiling.Optimal,
+            ImageUsageFlags.DepthStencilAttachmentBit,
+            MemoryPropertyFlags.DeviceLocalBit);
+        var imageView = CreateImageViewInternal(image, depthFormat, ImageAspectFlags.DepthBit);
+        return new VulkanTextureWrapper(image, memory, imageView);
     }
 
     public override unsafe void DestoryTexture(Texture texture)
