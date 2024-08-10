@@ -1,5 +1,6 @@
 using System.Numerics;
 using Silk.NET.SDL;
+using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 using SkiaSharp;
 
@@ -116,6 +117,6 @@ public abstract class GraphicsDevice(IView view)
     public abstract Texture CreateTextureFromImage(SKImage image);
     public abstract void DestoryTexture(Texture texture);
 
-    public abstract TextureSampler CreateTextureSampler();
+    public abstract TextureSampler CreateTextureSampler(TextureSamplerDesc desc);
     public abstract void DestroyTextureSampler(TextureSampler textureSampler);
 }

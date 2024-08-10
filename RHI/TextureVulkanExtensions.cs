@@ -73,4 +73,74 @@ internal static class TextureVulkanExtensions
             _ => throw new NotSupportedException($"Image layout '{imageLayout}' is not supported.")
         };
     }
+
+    internal static Silk.NET.Vulkan.Filter ToVulkanFilter(this Filter filter)
+    {
+        return filter switch
+        {
+            Filter.Nearest => Silk.NET.Vulkan.Filter.Nearest,
+            Filter.Linear => Silk.NET.Vulkan.Filter.Linear,
+            _ => throw new NotSupportedException($"Filter '{filter}' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.SamplerAddressMode ToVulkanSamplerAddressMode(this SamplerAddressMode mode)
+    {
+        return mode switch
+        {
+            SamplerAddressMode.Repeat => Silk.NET.Vulkan.SamplerAddressMode.Repeat,
+            SamplerAddressMode.MirroredRepeat => Silk.NET.Vulkan.SamplerAddressMode.MirroredRepeat,
+            SamplerAddressMode.ClampToEdge => Silk.NET.Vulkan.SamplerAddressMode.ClampToEdge,
+            SamplerAddressMode.ClampToBorder => Silk.NET.Vulkan.SamplerAddressMode.ClampToBorder,
+            SamplerAddressMode.MirrorClampToEdge => Silk.NET.Vulkan.SamplerAddressMode.MirrorClampToEdge,
+            _ => throw new NotSupportedException($"Sampler address mode '{mode}' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.BorderColor ToVulkanBorderColor(this BorderColor color)
+    {
+        return color switch
+        {
+            BorderColor.FloatTransparentBlack => Silk.NET.Vulkan.BorderColor.FloatTransparentBlack,
+            BorderColor.IntTransparentBlack => Silk.NET.Vulkan.BorderColor.IntTransparentBlack,
+            BorderColor.FloatOpaqueBlack => Silk.NET.Vulkan.BorderColor.FloatOpaqueBlack,
+            BorderColor.IntOpaqueBlack => Silk.NET.Vulkan.BorderColor.IntOpaqueBlack,
+            BorderColor.FloatOpaqueWhite => Silk.NET.Vulkan.BorderColor.FloatOpaqueWhite,
+            BorderColor.IntOpaqueWhite => Silk.NET.Vulkan.BorderColor.IntOpaqueWhite,
+            _ => throw new NotSupportedException($"Border color '{color}' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.SamplerMipmapMode ToVulkanSamplerMipmapMode(this SamplerMipmapMode mode)
+    {
+        return mode switch
+        {
+            SamplerMipmapMode.Nearest => Silk.NET.Vulkan.SamplerMipmapMode.Nearest,
+            SamplerMipmapMode.Linear => Silk.NET.Vulkan.SamplerMipmapMode.Linear,
+            _ => throw new NotSupportedException($"Sampler mipmap mode '{mode}' is not supported.")
+        };
+    }
+
+    internal static Silk.NET.Vulkan.SamplerCreateInfo ToVulkanSampler(this TextureSamplerDesc desc, float maxAnisotropy)
+    {
+        return new()
+        {
+            SType = Silk.NET.Vulkan.StructureType.SamplerCreateInfo,
+            MagFilter = desc.MagFilter.ToVulkanFilter(),
+            MinFilter = desc.MinFilter.ToVulkanFilter(),
+            AddressModeU = desc.AddressModeU.ToVulkanSamplerAddressMode(),
+            AddressModeV = desc.AddressModeV.ToVulkanSamplerAddressMode(),
+            AddressModeW = desc.AddressModeW.ToVulkanSamplerAddressMode(),
+            AnisotropyEnable = desc.AnisotropyEnable,
+            MaxAnisotropy = maxAnisotropy,
+            BorderColor = desc.BorderColor.ToVulkanBorderColor(),
+            UnnormalizedCoordinates = desc.UnnormalizedCoordinates,
+            CompareEnable = desc.CompareEnable,
+            CompareOp = desc.CompareOp.ToVulkanCompareOp(),
+            MipmapMode = desc.MipmapMode.ToVulkanSamplerMipmapMode(),
+            MipLodBias = desc.MipLodBias,
+            MinLod = desc.MinLod,
+            MaxLod = desc.MaxLod
+        };
+    }
 }

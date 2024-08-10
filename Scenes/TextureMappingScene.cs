@@ -269,7 +269,25 @@ public class TextureMappingScene : BaseScene
         var image = SKImage.FromEncodedData(data);
 
         _texture = _graphicsDevice.CreateTextureFromImage(image);
-        _textureSampler = _graphicsDevice.CreateTextureSampler();
+        _textureSampler = _graphicsDevice.CreateTextureSampler(
+            new()
+            {
+                MagFilter = Filter.Linear,
+                MinFilter = Filter.Linear,
+                AddressModeU = SamplerAddressMode.Repeat,
+                AddressModeV = SamplerAddressMode.Repeat,
+                AddressModeW = SamplerAddressMode.Repeat,
+                AnisotropyEnable = true,
+                BorderColor = BorderColor.IntOpaqueBlack,
+                UnnormalizedCoordinates = false,
+                CompareEnable = false,
+                CompareOp = CompareOp.Always,
+                MipmapMode = SamplerMipmapMode.Linear,
+                MipLodBias = 0,
+                MinLod = 0,
+                MaxLod = 0
+            }
+        );
     }
 
     protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)

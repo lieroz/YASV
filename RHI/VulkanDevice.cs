@@ -1817,29 +1817,10 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.FreeMemory(_device, vkTexture.DeviceMemory, null);
     }
 
-    public override unsafe TextureSampler CreateTextureSampler()
+    public override unsafe TextureSampler CreateTextureSampler(TextureSamplerDesc desc)
     {
         var properties = _vk.GetPhysicalDeviceProperties(_physicalDevice);
-        var samplerInfo = new SamplerCreateInfo()
-        {
-            SType = StructureType.SamplerCreateInfo,
-            MagFilter = Filter.Linear,
-            MinFilter = Filter.Linear,
-            AddressModeU = SamplerAddressMode.Repeat,
-            AddressModeV = SamplerAddressMode.Repeat,
-            AddressModeW = SamplerAddressMode.Repeat,
-            AnisotropyEnable = true,
-            MaxAnisotropy = properties.Limits.MaxSamplerAnisotropy,
-            BorderColor = BorderColor.IntOpaqueBlack,
-            UnnormalizedCoordinates = false,
-            CompareEnable = false,
-            CompareOp = Silk.NET.Vulkan.CompareOp.Always,
-            MipmapMode = SamplerMipmapMode.Linear,
-            MipLodBias = 0,
-            MinLod = 0,
-            MaxLod = 0
-        };
-
+        var samplerInfo = desc.ToVulkanSampler(desc.AnisotropyEnable ? properties.Limits.MaxSamplerAnisotropy : 0);
         var result = _vk.CreateSampler(_device, ref samplerInfo, null, out var sampler);
         VulkanException.ThrowsIf(result != Result.Success, $"Couldn't create sampler: '{result}'.");
 

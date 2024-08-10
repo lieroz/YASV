@@ -251,10 +251,35 @@ public enum DescriptorType
     InputAttachment
 }
 
-public static class Constants
+public enum Filter
 {
-    public const int MaxFramesInFlight = 2;
-    public const int PreallocatedBuffersCount = 3;
+    Nearest,
+    Linear
+}
+
+public enum SamplerAddressMode
+{
+    Repeat,
+    MirroredRepeat,
+    ClampToEdge,
+    ClampToBorder,
+    MirrorClampToEdge
+}
+
+public enum BorderColor
+{
+    FloatTransparentBlack,
+    IntTransparentBlack,
+    FloatOpaqueBlack,
+    IntOpaqueBlack,
+    FloatOpaqueWhite,
+    IntOpaqueWhite
+}
+
+public enum SamplerMipmapMode
+{
+    Nearest,
+    Linear
 }
 
 public struct Viewport
@@ -273,4 +298,10 @@ public struct Rect2D
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+}
+
+public static class Constants
+{
+    public const int MaxFramesInFlight = 2;
+    public const int PreallocatedBuffersCount = 3;
 }
