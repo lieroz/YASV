@@ -285,6 +285,11 @@ public class DepthBuffering : BaseScene
             _graphicsDevice.DestoryTexture(_depthTexture!);
             _graphicsDevice.DestroyTextureSampler(_textureSampler!);
         };
+        DisposeManaged += () =>
+        {
+            _graphicsDevice.RecreateTexturesAction = null;
+        };
+
 
         var data = File.ReadAllBytes("Assets/texture.jpg");
         var image = SKImage.FromEncodedData(data);
@@ -332,8 +337,8 @@ public class DepthBuffering : BaseScene
 
                 var ubo = new UniformBufferObject()
                 {
-                    Model = Matrix4X4.CreateRotationZ(MathHelper.DegreesToRadians(90.0f)),
-                    View = Matrix4X4.CreateLookAt<float>(new(2.0f, -2.0f, 2.0f), new(0.0f, 0.0f, 0.0f), new(0.0f, 0.0f, 1.0f)),
+                    Model = Matrix4X4.CreateRotationZ(MathHelper.DegreesToRadians(-180.0f)),
+                    View = Matrix4X4.CreateLookAt<float>(new(-2.0f, 2.0f, 2.0f), new(0.0f, 0.0f, 0.0f), new(0.0f, 0.0f, 1.0f)),
                     Projection = Matrix4X4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(45.0f), width / height, 0.1f, 10.0f)
                 };
 
