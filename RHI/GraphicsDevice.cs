@@ -41,8 +41,6 @@ public abstract class GraphicsDevice(IView view)
 
     public abstract void WaitIdle();
 
-    public abstract Tuple<float, float> GetSwapchainSizes();
-
     public CommandBuffer GetCommandBuffer(int frameNumber)
     {
         int frameIndex = frameNumber % Constants.MaxFramesInFlight;
@@ -91,7 +89,7 @@ public abstract class GraphicsDevice(IView view)
     public abstract void DestroyGraphicsPipelines(GraphicsPipeline[] pipelines);
     public abstract void BindGraphicsPipeline(CommandBuffer commandBuffer, GraphicsPipeline pipeline);
 
-    public abstract void SetDefaultViewportAndScissor(CommandBuffer commandBuffer);
+    public abstract Tuple<float, float> GetSwapchainSizes();
     public abstract void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports);
     public abstract void SetScissors(CommandBuffer commandBuffer, int firstScissor, Rect2D[] scissors);
 

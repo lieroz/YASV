@@ -1065,11 +1065,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.DeviceWaitIdle(_device);
     }
 
-    public override Tuple<float, float> GetSwapchainSizes()
-    {
-        return new((int)_swapchainExtent.Width, (int)_swapchainExtent.Height);
-    }
-
     protected override unsafe CommandBuffer[] AllocateCommandBuffers(int frameIndex, int count)
     {
         var commandBuffers = new Silk.NET.Vulkan.CommandBuffer[count];
@@ -1474,25 +1469,9 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdBindPipeline(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, graphicsPipeline.ToVulkanGraphicsPipeline());
     }
 
-    public override void SetDefaultViewportAndScissor(CommandBuffer commandBuffer)
+    public override Tuple<float, float> GetSwapchainSizes()
     {
-        var viewport = new Silk.NET.Vulkan.Viewport()
-        {
-            X = 0,
-            Y = 0,
-            Width = _swapchainExtent.Width,
-            Height = _swapchainExtent.Height,
-            MinDepth = 0.0f,
-            MaxDepth = 1.0f
-        };
-        _vk.CmdSetViewport(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref viewport);
-
-        var scissor = new Silk.NET.Vulkan.Rect2D()
-        {
-            Offset = new(0, 0),
-            Extent = _swapchainExtent
-        };
-        _vk.CmdSetScissor(commandBuffer.ToVulkanCommandBuffer(), 0, 1, ref scissor);
+        return new((int)_swapchainExtent.Width, (int)_swapchainExtent.Height);
     }
 
     public override void SetViewports(CommandBuffer commandBuffer, int firstViewport, Viewport[] viewports)

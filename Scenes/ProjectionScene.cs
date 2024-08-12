@@ -275,7 +275,18 @@ public class ProjectionScene : BaseScene
                 _graphicsDevice.UpdateDescriptorSet(descriptorWriter, descriptorSet);
                 _graphicsDevice.BindDescriptorSet(commandBuffer, _projectionGraphicsPipelineLayout, descriptorSet);
 
-                _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
+                _graphicsDevice.SetViewports(commandBuffer, 0, [
+                    new()
+                    {
+                        X = 0.0f, Y = 0.0f, Width = width, Height = height, MinDepth = 0.0f, MaxDepth = 1.0f
+                    }
+                ]);
+                _graphicsDevice.SetScissors(commandBuffer, 0, [
+                    new()
+                    {
+                        X = 0, Y = 0, Width = (int)width, Height = (int)height
+                    }
+                ]);
                 _graphicsDevice.BindVertexBuffers(commandBuffer, [_projectionVertexBuffer]);
                 _graphicsDevice.BindIndexBuffer(commandBuffer, _projectionIndexBuffer, IndexType.Uint16);
                 _graphicsDevice.DrawIndexed(commandBuffer, (uint)_indices.Length, 1, 0, 0, 0);
