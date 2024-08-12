@@ -73,7 +73,7 @@ public class SilkNETWindow : NativeControlHost, IDisposable
                 {
                     action();
                 }
-                CurrentScene?.DrawScene(_window.Size.X, _window.Size.Y);
+                CurrentScene?.DrawScene();
             });
         })
         {

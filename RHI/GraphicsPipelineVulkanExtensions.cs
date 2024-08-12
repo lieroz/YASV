@@ -498,7 +498,7 @@ internal static class GraphicsPipelineVulkanExtensions
             return new()
             {
                 SType = Silk.NET.Vulkan.StructureType.DescriptorSetLayoutCreateInfo,
-                Flags = Silk.NET.Vulkan.DescriptorSetLayoutCreateFlags.None, // TODO: move to abstraction
+                Flags = Silk.NET.Vulkan.DescriptorSetLayoutCreateFlags.None,
                 BindingCount = layout.Bindings == null ? 0 : (uint)layout.Bindings.Length,
                 PBindings = vkBindingsPtr
             };

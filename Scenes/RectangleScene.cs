@@ -179,7 +179,7 @@ public class RectangleScene : BaseScene
         };
     }
 
-    protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)
+    protected override void Draw(CommandBuffer commandBuffer, int imageIndex)
     {
         var backBuffer = _graphicsDevice.GetBackBuffer(imageIndex);
         _graphicsDevice.BeginCommandBuffer(commandBuffer);

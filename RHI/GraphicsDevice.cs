@@ -10,7 +10,7 @@ public abstract class GraphicsDevice(IView view)
     protected readonly IView _view = view;
     private readonly CommandBufferPool _commandBufferPool = new();
     private readonly StagingBufferPool _stagingBufferPool = new();
-    public Action? RecreateTexturesAction { get; set; }
+    public Action<int, int>? RecreateTexturesAction { get; set; }
 
     public abstract void Create(Sdl sdlApi);
     public void Destroy()
@@ -40,6 +40,8 @@ public abstract class GraphicsDevice(IView view)
     public abstract void EndFrameInternal(CommandBuffer commandBuffer, int frameIndex, int imageIndex);
 
     public abstract void WaitIdle();
+
+    public abstract Tuple<float, float> GetSwapchainSizes();
 
     public CommandBuffer GetCommandBuffer(int frameNumber)
     {
@@ -115,7 +117,7 @@ public abstract class GraphicsDevice(IView view)
     public abstract void BindIndexBuffer(CommandBuffer commandBuffer, IndexBuffer buffer, IndexType indexType);
 
     public abstract Texture CreateTextureFromImage(SKImage image);
-    public abstract Texture CreateDepthTexture();
+    public abstract Texture CreateTexture(int width, int height, Format format);
     public abstract void DestoryTexture(Texture texture);
 
     public abstract TextureSampler CreateTextureSampler(TextureSamplerDesc desc);

@@ -16,12 +16,12 @@ public class DepthBuffering : BaseScene
         }
     }
 
-    private readonly GraphicsPipelineLayout _textureMappingGraphicsPipelineLayout;
-    private readonly GraphicsPipelineDesc _textureMappingGraphicsPipelineDesc;
-    private readonly GraphicsPipeline _textureMappingGraphicsPipeline;
-    private readonly VertexBuffer _textureMappingVertexBuffer;
-    private readonly IndexBuffer _textureMappingIndexBuffer;
-    private readonly ConstantBuffer[] _textureMappingConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
+    private readonly GraphicsPipelineLayout _depthBufferingGraphicsPipelineLayout;
+    private readonly GraphicsPipelineDesc _depthBufferingGraphicsPipelineDesc;
+    private readonly GraphicsPipeline _depthBufferingGraphicsPipeline;
+    private readonly VertexBuffer _depthBufferingVertexBuffer;
+    private readonly IndexBuffer _depthBufferingIndexBuffer;
+    private readonly ConstantBuffer[] _depthBufferingConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
     private readonly Texture _texture;
     private Texture _depthTexture;
     private readonly TextureSampler _textureSampler;
@@ -163,7 +163,7 @@ public class DepthBuffering : BaseScene
         var vertexShader = _graphicsDevice.CreateShader("Shaders/depthBuffering.vert.hlsl", ShaderStage.Vertex);
         var fragmentShader = _graphicsDevice.CreateShader("Shaders/depthBuffering.frag.hlsl", ShaderStage.Pixel);
 
-        _textureMappingGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
+        _depthBufferingGraphicsPipelineDesc = new GraphicsPipelineDescBuilder()
             .SetVertexShader(vertexShader)
             .SetPixelShader(fragmentShader)
             .SetVertexInputState(new()
@@ -224,7 +224,7 @@ public class DepthBuffering : BaseScene
             })
             .Build();
 
-        _textureMappingGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
+        _depthBufferingGraphicsPipelineLayout = _graphicsDevice.CreateGraphicsPipelineLayout(new()
         {
             SetLayouts = [new() { Bindings = [
                 new() {
@@ -242,13 +242,13 @@ public class DepthBuffering : BaseScene
             }],
             PushConstantRanges = null
         });
-        _textureMappingGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_textureMappingGraphicsPipelineDesc, _textureMappingGraphicsPipelineLayout);
+        _depthBufferingGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_depthBufferingGraphicsPipelineDesc, _depthBufferingGraphicsPipelineLayout);
 
         int vertexBufferSize = Marshal.SizeOf<Vertex>() * _vertices.Length;
-        _textureMappingVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
+        _depthBufferingVertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
 
         int indexBufferSize = sizeof(short) * _indices.Length;
-        _textureMappingIndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
+        _depthBufferingIndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
 
         var vertexData = new byte[Marshal.SizeOf<Vertex>() * _vertices.Length];
         for (int i = 0; i < _vertices.Length; i++)
@@ -259,24 +259,24 @@ public class DepthBuffering : BaseScene
         var indexData = new byte[sizeof(short) * _indices.Length];
         System.Buffer.BlockCopy(_indices, 0, indexData, 0, indexData.Length);
 
-        _graphicsDevice.CopyDataToVertexBuffer(_textureMappingVertexBuffer, vertexData);
-        _graphicsDevice.CopyDataToIndexBuffer(_textureMappingIndexBuffer, indexData);
+        _graphicsDevice.CopyDataToVertexBuffer(_depthBufferingVertexBuffer, vertexData);
+        _graphicsDevice.CopyDataToIndexBuffer(_depthBufferingIndexBuffer, indexData);
 
-        for (int i = 0; i < _textureMappingConstantBuffers.Length; i++)
+        for (int i = 0; i < _depthBufferingConstantBuffers.Length; i++)
         {
-            _textureMappingConstantBuffers[i] = graphicsDevice.CreateConstantBuffer(Marshal.SizeOf<UniformBufferObject>());
+            _depthBufferingConstantBuffers[i] = graphicsDevice.CreateConstantBuffer(Marshal.SizeOf<UniformBufferObject>());
         }
 
         _graphicsDevice.DestroyShaders([vertexShader, fragmentShader]);
 
         DisposeUnmanaged += () =>
         {
-            _graphicsDevice.DestroyGraphicsPipelines([_textureMappingGraphicsPipeline]);
-            _graphicsDevice.DestroyGraphicsPipelineLayouts([_textureMappingGraphicsPipelineLayout]);
-            _graphicsDevice.DestroyVertexBuffer(_textureMappingVertexBuffer);
-            _graphicsDevice.DestroyIndexBuffer(_textureMappingIndexBuffer);
+            _graphicsDevice.DestroyGraphicsPipelines([_depthBufferingGraphicsPipeline]);
+            _graphicsDevice.DestroyGraphicsPipelineLayouts([_depthBufferingGraphicsPipelineLayout]);
+            _graphicsDevice.DestroyVertexBuffer(_depthBufferingVertexBuffer);
+            _graphicsDevice.DestroyIndexBuffer(_depthBufferingIndexBuffer);
 
-            foreach (var constantBuffer in _textureMappingConstantBuffers)
+            foreach (var constantBuffer in _depthBufferingConstantBuffers)
             {
                 _graphicsDevice.DestroyConstantBuffer(constantBuffer);
             }
@@ -314,26 +314,30 @@ public class DepthBuffering : BaseScene
                 MaxLod = 0
             }
         );
-        _depthTexture = _graphicsDevice.CreateDepthTexture();
 
-        _graphicsDevice.RecreateTexturesAction += () =>
+        var (width, height) = _graphicsDevice.GetSwapchainSizes();
+        _depthTexture = _graphicsDevice.CreateTexture((int)width, (int)height, Format.D32_Float);
+
+        _graphicsDevice.RecreateTexturesAction += (width, height) =>
         {
-            _graphicsDevice.DestoryTexture(_depthTexture);
-            _depthTexture = _graphicsDevice.CreateDepthTexture();
+            _graphicsDevice.DestoryTexture(_depthTexture!);
+            _depthTexture = _graphicsDevice.CreateTexture(width, height, Format.D32_Float);
         };
     }
 
-    protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)
+    protected override void Draw(CommandBuffer commandBuffer, int imageIndex)
     {
         var backBuffer = _graphicsDevice.GetBackBuffer(imageIndex);
+        var (width, height) = _graphicsDevice.GetSwapchainSizes();
+
         _graphicsDevice.BeginCommandBuffer(commandBuffer);
         {
             _graphicsDevice.ImageBarrier(commandBuffer, backBuffer, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
-            _graphicsDevice.ImageBarrier(commandBuffer, _depthTexture, ImageLayout.Undefined, ImageLayout.DepthStencilAttachmentOptimal);
+            _graphicsDevice.ImageBarrier(commandBuffer, _depthTexture!, ImageLayout.Undefined, ImageLayout.DepthStencilAttachmentOptimal);
 
             _graphicsDevice.BeginRendering(commandBuffer, backBuffer, _depthTexture);
             {
-                _graphicsDevice.BindGraphicsPipeline(commandBuffer, _textureMappingGraphicsPipeline);
+                _graphicsDevice.BindGraphicsPipeline(commandBuffer, _depthBufferingGraphicsPipeline);
 
                 var ubo = new UniformBufferObject()
                 {
@@ -344,19 +348,30 @@ public class DepthBuffering : BaseScene
 
                 var frameIndex = _currentFrame % Constants.MaxFramesInFlight;
 
-                var cb = _textureMappingConstantBuffers[frameIndex];
+                var cb = _depthBufferingConstantBuffers[frameIndex];
                 _graphicsDevice.CopyDataToConstantBuffer(cb, ubo.Bytes);
 
                 var descriptorWriter = _graphicsDevice.GetDescriptorWriter();
-                var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _textureMappingGraphicsPipelineLayout);
+                var descriptorSet = _graphicsDevice.GetDescriptorSet(frameIndex, _depthBufferingGraphicsPipelineLayout);
                 _graphicsDevice.BindConstantBuffer(descriptorWriter, 0, cb, cb.Size, 0, DescriptorType.UniformBuffer);
                 _graphicsDevice.BindTexture(descriptorWriter, 1, _texture, _textureSampler, ImageLayout.ShaderReadOnlyOptimal, DescriptorType.CombinedImageSampler);
                 _graphicsDevice.UpdateDescriptorSet(descriptorWriter, descriptorSet);
-                _graphicsDevice.BindDescriptorSet(commandBuffer, _textureMappingGraphicsPipelineLayout, descriptorSet);
+                _graphicsDevice.BindDescriptorSet(commandBuffer, _depthBufferingGraphicsPipelineLayout, descriptorSet);
 
-                _graphicsDevice.SetDefaultViewportAndScissor(commandBuffer);
-                _graphicsDevice.BindVertexBuffers(commandBuffer, [_textureMappingVertexBuffer]);
-                _graphicsDevice.BindIndexBuffer(commandBuffer, _textureMappingIndexBuffer, IndexType.Uint16);
+                _graphicsDevice.SetViewports(commandBuffer, 0, [
+                    new()
+                    {
+                        X = 0.0f, Y = 0.0f, Width = width, Height = height, MinDepth = 0.0f, MaxDepth = 1.0f
+                    }
+                ]);
+                _graphicsDevice.SetScissors(commandBuffer, 0, [
+                    new()
+                    {
+                        X = 0, Y = 0, Width = (int)width, Height = (int)height
+                    }
+                ]);
+                _graphicsDevice.BindVertexBuffers(commandBuffer, [_depthBufferingVertexBuffer]);
+                _graphicsDevice.BindIndexBuffer(commandBuffer, _depthBufferingIndexBuffer, IndexType.Uint16);
                 _graphicsDevice.DrawIndexed(commandBuffer, (uint)_indices.Length, 1, 0, 0, 0);
             }
 

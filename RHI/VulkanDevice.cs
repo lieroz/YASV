@@ -757,13 +757,8 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
 
     private Silk.NET.Vulkan.Format FindDepthFormat()
     {
-        return FindSupportedFormat([Silk.NET.Vulkan.Format.D32Sfloat, Silk.NET.Vulkan.Format.D32SfloatS8Uint, Silk.NET.Vulkan.Format.D24UnormS8Uint],
+        return FindSupportedFormat([Silk.NET.Vulkan.Format.D32Sfloat, Silk.NET.Vulkan.Format.D24UnormS8Uint],
             ImageTiling.Optimal, FormatFeatureFlags.DepthStencilAttachmentBit);
-    }
-
-    private bool HasStencilComponent(Silk.NET.Vulkan.Format format)
-    {
-        return format == Silk.NET.Vulkan.Format.D32SfloatS8Uint || format == Silk.NET.Vulkan.Format.D24UnormS8Uint;
     }
 
     private unsafe void CreateSwapchain(IView view)
@@ -989,7 +984,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         DestroySwapchain();
     }
 
-    // TODO: Recreate render passes
     private void RecreateSwapchain()
     {
         WaitIdle();
@@ -999,7 +993,7 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         CreateSwapchain(_view);
         CreateImageViews();
 
-        RecreateTexturesAction?.Invoke();
+        RecreateTexturesAction?.Invoke((int)_swapchainExtent.Width, (int)_swapchainExtent.Height);
     }
 
     public override unsafe int BeginFrameInternal(int frameIndex)
@@ -1069,6 +1063,11 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
     public override unsafe void WaitIdle()
     {
         _vk.DeviceWaitIdle(_device);
+    }
+
+    public override Tuple<float, float> GetSwapchainSizes()
+    {
+        return new((int)_swapchainExtent.Width, (int)_swapchainExtent.Height);
     }
 
     protected override unsafe CommandBuffer[] AllocateCommandBuffers(int frameIndex, int count)
@@ -1297,7 +1296,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdBindDescriptorSets(commandBuffer.ToVulkanCommandBuffer(), PipelineBindPoint.Graphics, layout.ToVulkanGraphicsPipelineLayout().PipelineLayout, 0, [set.ToVulkanDescriptorSet()], null);
     }
 
-    // TODO: move to vulkan graphics extensions
     public override unsafe GraphicsPipelineLayout CreateGraphicsPipelineLayout(GraphicsPipelineLayoutDesc desc)
     {
         Result result = Result.Success;
@@ -1535,7 +1533,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         throw new VulkanException($"Couldn't find suitable memory type: {typeFilter}.");
     }
 
-    // TODO: should destroy previous steps if fail?
     private unsafe Tuple<Silk.NET.Vulkan.Buffer, DeviceMemory> CreateBufferInternal(int size, BufferUsageFlags usageFlags, SharingMode sharingMode, MemoryPropertyFlags memoryFlags)
     {
         var createInfo = new BufferCreateInfo()
@@ -1771,7 +1768,6 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         _vk.CmdCopyBufferToImage(commandBuffer, buffer, image, Silk.NET.Vulkan.ImageLayout.TransferDstOptimal, 1, [copyRegion]);
     }
 
-    // TODO: should destroy previous steps if fail?
     private unsafe Tuple<Image, DeviceMemory> CreateImage(int width, int height, Silk.NET.Vulkan.Format format, ImageTiling tiling, ImageUsageFlags usageFlags, MemoryPropertyFlags memoryPropertyFlags)
     {
         var imageInfo = new ImageCreateInfo()
@@ -1878,17 +1874,31 @@ public class VulkanDevice(IView view) : GraphicsDevice(view)
         return new VulkanTextureWrapper(texture, memory, view);
     }
 
-    public override unsafe Texture CreateDepthTexture()
+    public override Texture CreateTexture(int width, int height, Format format)
     {
-        var depthFormat = FindDepthFormat();
+        var usageFlags = ImageUsageFlags.ColorAttachmentBit;
+        var aspectFlags = ImageAspectFlags.ColorBit;
+
+        if (format == Format.D32_Float || format == Format.D24_Unorm_S8_Uint)
+        {
+            usageFlags = ImageUsageFlags.DepthStencilAttachmentBit;
+            aspectFlags = ImageAspectFlags.DepthBit;
+
+            if (format == Format.D24_Unorm_S8_Uint)
+            {
+                aspectFlags |= ImageAspectFlags.StencilBit;
+            }
+        }
+
+        var vkFormat = format.ToVulkanFormat();
         var (image, memory) = CreateImage(
-            (int)_swapchainExtent.Width,
-            (int)_swapchainExtent.Height,
-            depthFormat,
+            width,
+            height,
+            vkFormat,
             ImageTiling.Optimal,
-            ImageUsageFlags.DepthStencilAttachmentBit,
+            usageFlags,
             MemoryPropertyFlags.DeviceLocalBit);
-        var imageView = CreateImageViewInternal(image, depthFormat, ImageAspectFlags.DepthBit);
+        var imageView = CreateImageViewInternal(image, vkFormat, aspectFlags);
         return new VulkanTextureWrapper(image, memory, imageView);
     }
 

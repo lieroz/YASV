@@ -111,7 +111,6 @@ public struct PushConstantRange
 {
 }
 
-// TODO: https://vkguide.dev/docs/extra-chapter/abstracting_descriptors/
 public struct GraphicsPipelineLayoutDesc
 {
     public DescriptorSetLayoutDesc[]? SetLayouts { get; set; }

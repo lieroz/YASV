@@ -290,9 +290,11 @@ public class TextureMappingScene : BaseScene
         );
     }
 
-    protected override void Draw(CommandBuffer commandBuffer, int imageIndex, float width, float height)
+    protected override void Draw(CommandBuffer commandBuffer, int imageIndex)
     {
         var backBuffer = _graphicsDevice.GetBackBuffer(imageIndex);
+        var (width, height) = _graphicsDevice.GetSwapchainSizes();
+
         _graphicsDevice.BeginCommandBuffer(commandBuffer);
         {
             _graphicsDevice.ImageBarrier(commandBuffer, backBuffer, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
