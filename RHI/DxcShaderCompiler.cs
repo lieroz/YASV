@@ -13,10 +13,14 @@ public class DxcShaderCompiler : ShaderCompiler
 
     public unsafe DxcShaderCompiler()
     {
-        // TODO: Add packaging of dxcompiler library
+        var dxcLibrary = "dxcompiler";
+#if DEBUG
+        dxcLibrary += "d";
+#endif
+
         if (OperatingSystem.IsWindows())
         {
-            _dxc = new DXC(DXC.CreateDefaultContext([$"{Environment.GetEnvironmentVariable("VULKAN_SDK")}/Bin/dxcompiler.dll"]));
+            _dxc = new DXC(DXC.CreateDefaultContext([$"./Libraries/Native/Windows/Dxc/{dxcLibrary}.dll"]));
         }
         else
         {

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Silk.NET.Core;
+using Silk.NET.Core.Contexts;
 using Silk.NET.Core.Native;
 using Silk.NET.SDL;
 using Silk.NET.Vulkan;
@@ -172,7 +173,7 @@ internal class VulkanDescriptorWriter : DescriptorWriter
     private readonly List<WriteDescriptorSet> _imageWrites = [];
     private readonly List<WriteDescriptorSet> _bufferWrites = [];
 
-    public unsafe void WriteImage(int binding, ImageView image, Silk.NET.Vulkan.Sampler sampler, Silk.NET.Vulkan.ImageLayout layout, Silk.NET.Vulkan.DescriptorType type)
+    public unsafe void WriteImage(int binding, ImageView image, Sampler sampler, Silk.NET.Vulkan.ImageLayout layout, Silk.NET.Vulkan.DescriptorType type)
     {
         var imageInfo = new DescriptorImageInfo()
         {
@@ -245,8 +246,35 @@ internal class VulkanDescriptorWriter : DescriptorWriter
 
 public class VulkanDevice(IView view) : GraphicsDevice(view)
 {
+    private static Vk GetApi()
+    {
+        MultiNativeContext? multiNativeContext = null;
+        if (OperatingSystem.IsWindows())
+        {
+            multiNativeContext = new MultiNativeContext(Vk.CreateDefaultContext([$"./Libraries/Native/Windows/Vulkan/vulkan-1.dll"]), null);
+        }
+        else
+        {
+            throw new PlatformNotSupportedException($"Unsupporeted platform: {Environment.OSVersion.Platform}");
+        }
+
+        var ret = new Vk(multiNativeContext);
+        multiNativeContext.Contexts[1] = new LamdaNativeContext(delegate (string x)
+        {
+            if (x.EndsWith("ProcAddr"))
+            {
+                return 0;
+            }
+
+            nint num = 0;
+            num = (nint)ret.GetDeviceProcAddr(ret.CurrentDevice.GetValueOrDefault(), x);
+            return (num != 0) ? num : ((nint)ret.GetInstanceProcAddr(ret.CurrentInstance.GetValueOrDefault(), x));
+        });
+        return ret;
+    }
+
+    private readonly Vk _vk = GetApi();
     private readonly ShaderCompiler _shaderCompiler = new DxcShaderCompiler();
-    private readonly Vk _vk = Vk.GetApi();
     private Instance _instance;
 #if DEBUG
     private ExtDebugUtils? _extDebugUtils;
