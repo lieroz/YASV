@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using Silk.NET.Maths;
 using YASV.RHI;
 
 namespace YASV.Scenes;
@@ -13,74 +12,12 @@ public class RectangleScene : BaseScene
     private readonly VertexBuffer _rectangleVertexBuffer;
     private readonly IndexBuffer _rectangleIndexBuffer;
 
-    private readonly struct Vertex(Vector2D<float> position, Vector3D<float> color)
-    {
-        private readonly Vector2D<float> _position = position;
-        private readonly Vector3D<float> _color = color;
-
-        public readonly Vector2D<float> Position { get => _position; }
-        public readonly Vector3D<float> Color { get => _color; }
-
-        public static VertexInputBindingDesc[] BindingDescriptions
-        {
-            get
-            {
-                return [
-                    new()
-                    {
-                        Binding = 0,
-                        Stride = Marshal.SizeOf<Vertex>(),
-                        InputRate = VertexInputRate.Vertex
-                    }
-                ];
-            }
-        }
-
-        public static VertexInputAttributeDesc[] AttributeDescriptions
-        {
-            get
-            {
-                return [
-                    new()
-                    {
-                        Binding = 0,
-                        Location = 0,
-                        Format = Format.R32G32_Float,
-                        Offset = (int)Marshal.OffsetOf<Vertex>("_position")
-                    },
-                    new()
-                    {
-                        Binding = 0,
-                        Location = 1,
-                        Format = Format.R32G32B32_Float,
-                        Offset = (int)Marshal.OffsetOf<Vertex>("_color")
-                    }
-                ];
-            }
-        }
-
-        public byte[] Bytes
-        {
-            get
-            {
-                var bytes = new byte[Marshal.SizeOf<Vertex>()];
-                {
-                    var floats = new float[5];
-                    _position.CopyTo(floats, 0);
-                    _color.CopyTo(floats, 2);
-                    System.Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
-                }
-                return bytes;
-            }
-        }
-    }
-
     private readonly Vertex[] _vertices =
     [
-        new(new(-0.5f, -0.5f), new(1.0f, 0.0f, 0.0f)),
-        new(new(0.5f, -0.5f), new(0.0f, 1.0f, 0.0f)),
-        new(new(0.5f, 0.5f), new(0.0f, 0.0f, 1.0f)),
-        new(new(-0.5f, 0.5f), new(1.0f, 1.0f, 1.0f))
+        new(new(-0.5f, -0.5f, 0.0f), new(1.0f, 0.0f, 0.0f), new(0.0f, 0.0f)),
+        new(new(0.5f, -0.5f, 0.0f), new(0.0f, 1.0f, 0.0f), new(0.0f, 0.0f)),
+        new(new(0.5f, 0.5f, 0.0f), new(0.0f, 0.0f, 1.0f), new(0.0f, 0.0f)),
+        new(new(-0.5f, 0.5f, 0.0f), new(1.0f, 1.0f, 1.0f), new(0.0f, 0.0f))
     ];
 
     private readonly short[] _indices = [0, 1, 2, 2, 3, 0];

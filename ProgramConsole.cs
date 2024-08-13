@@ -1,6 +1,7 @@
 using Silk.NET.Maths;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
+using YASV.Helpers;
 using YASV.RHI;
 using YASV.Scenes;
 
@@ -34,7 +35,7 @@ internal sealed class ProgramConsole
         var graphicsDevice = new VulkanDevice(window);
         graphicsDevice.Create(Sdl.GetApi());
 
-        var sceneTypes = Helpers.GetSceneTypes();
+        var sceneTypes = ReflectionHelpers.GetSceneTypes();
         for (int i = 0; i < sceneTypes.Count; i++)
         {
             Console.WriteLine($"{i}. {sceneTypes[i].Name}");
@@ -48,7 +49,7 @@ internal sealed class ProgramConsole
 
         window.Render += (double delta) =>
         {
-            scene.DrawScene(window.Size.X, window.Size.Y);
+            scene.DrawScene();
         };
 
         window.Run();

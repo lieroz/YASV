@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using YASV.Helpers;
 using YASV.Scenes;
 using YASV.ViewModels;
 
@@ -6,7 +7,7 @@ namespace YASV.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly List<Type> _sceneTypes = Helpers.GetSceneTypes();
+    private readonly List<Type> _sceneTypes = ReflectionHelpers.GetSceneTypes();
     private readonly SilkNETWindow? _renderWindow;
 
     public MainWindow()

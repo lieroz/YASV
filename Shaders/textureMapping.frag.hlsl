@@ -1,8 +1,4 @@
-struct PixelInput
-{
-    [[vk::location(0)]] float3 color : COLOR;
-    [[vk::location(1)]] float2 textureCoordinate : TEXCOORD;
-};
+#include "common.frag.hlsli"
 
 Texture2D texture : register(t1);
 SamplerState textureSampler: register(s1);

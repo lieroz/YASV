@@ -1,9 +1,9 @@
 using System.Reflection;
 using YASV.Scenes;
 
-namespace YASV;
+namespace YASV.Helpers;
 
-public static class Helpers
+public static class ReflectionHelpers
 {
     public static List<Type> GetSceneTypes()
     {

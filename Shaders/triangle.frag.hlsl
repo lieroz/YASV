@@ -1,7 +1,4 @@
-struct PixelInput
-{
-    [[vk::location(0)]] float3 color : COLOR;
-};
+#include "common.frag.hlsli"
 
 float4 main(PixelInput pixelInput) : SV_Target0
 {

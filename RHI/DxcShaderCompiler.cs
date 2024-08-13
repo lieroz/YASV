@@ -55,11 +55,14 @@ public class DxcShaderCompiler : ShaderCompiler
         };
         targetProfile = $"{targetProfile}_{TargetProfileVersion}";
 
-        string[] args = ["-E", "main", "-T", targetProfile, "-WX", "-Zi"];
+        string[] args = ["-E", "main", "-T", targetProfile, "-WX", "-Zi", "-I", "./Shaders"];
         if (useSpirv)
         {
             args = [.. args, "-spirv"];
         }
+
+        ComPtr<IDxcIncludeHandler> includeHandler = new();
+        SilkMarshal.ThrowHResult(_dxcUtils.CreateDefaultIncludeHandler(ref includeHandler));
 
         ComPtr<IDxcResult> compileResult = new();
         {
@@ -68,7 +71,7 @@ public class DxcShaderCompiler : ShaderCompiler
             SilkMarshal.ThrowHResult(_dxcCompiler.Compile(in buffer,
                 (char**)pArgs,
                 (uint)args.Length,
-                (IDxcIncludeHandler*)null,
+                includeHandler,
                 SilkMarshal.GuidPtrOf<IDxcResult>(),
                 (void**)compileResult.GetAddressOf())
             );
