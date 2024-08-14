@@ -11,6 +11,7 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);**\*.axaml.cs;**\*.axaml;Program.cs;**\SilkNETWindow.cs</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Silk.NET.Assimp" />
     <PackageReference Include="Silk.NET.Direct3D.Compilers" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" />

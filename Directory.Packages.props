@@ -19,6 +19,7 @@
 
   <!--Silk.NET-->
   <ItemGroup>
+    <PackageVersion Include="Silk.NET.Assimp" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Direct3D.Compilers" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Input" Version="$(SilkNETVersion)" />
     <PackageVersion Include="Silk.NET.Maths" Version="$(SilkNETVersion)" />

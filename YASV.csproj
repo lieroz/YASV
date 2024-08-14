@@ -24,6 +24,7 @@
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="Avalonia.ReactiveUI" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Silk.NET.Assimp" />
     <PackageReference Include="Silk.NET.Direct3D.Compilers" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" />
