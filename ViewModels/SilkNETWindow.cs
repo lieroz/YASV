@@ -4,6 +4,7 @@ using Avalonia.Platform;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
 using Silk.NET.Windowing.Sdl;
+using YASV.Helpers;
 using YASV.RHI;
 using YASV.Scenes;
 using SDLThread = System.Threading.Thread;
@@ -52,12 +53,13 @@ public class SilkNETWindow : NativeControlHost, IDisposable
 
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
+        var vkApi = VulkanHelpers.GetApi();
         var sdlApi = Sdl.GetApi();
         sdlApi.SetHint(Sdl.HintVideoForeignWindowVulkan, "1");
 
         _window = SdlWindowing.CreateFrom((void*)parent.Handle);
 
-        _graphicsDevice = new VulkanDevice(_window);
+        _graphicsDevice = new VulkanDevice(vkApi, _window);
         _graphicsDevice.Create(sdlApi);
 
         _sdlThread = new(() =>

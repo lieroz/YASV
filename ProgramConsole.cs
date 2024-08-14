@@ -31,8 +31,9 @@ internal sealed class ProgramConsole
 
     public static void Main()
     {
+        var vkApi = VulkanHelpers.GetApi();
         var window = CreateWindow();
-        var graphicsDevice = new VulkanDevice(window);
+        var graphicsDevice = new VulkanDevice(vkApi, window);
         graphicsDevice.Create(Sdl.GetApi());
 
         var sceneTypes = ReflectionHelpers.GetSceneTypes();
