@@ -1,7 +1,8 @@
 using System.Runtime.InteropServices;
 using Silk.NET.Maths;
+using YASV.RHI;
 
-namespace YASV.RHI;
+namespace YASV.GraphicsEntities;
 
 public readonly struct Vertex(Vector3D<float> position, Vector3D<float> color, Vector2D<float> textureCoordinate)
 {

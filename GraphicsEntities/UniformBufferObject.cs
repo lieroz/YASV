@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Silk.NET.Maths;
 
-namespace YASV.RHI;
+namespace YASV.GraphicsEntities;
 
 [StructLayout(LayoutKind.Explicit)]
 // TODO: generate UBO types?

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Silk.NET.Assimp;
 using Silk.NET.Maths;
 using SkiaSharp;
+using YASV.GraphicsEntities;
 using YASV.Helpers;
 using YASV.RHI;
 
@@ -16,7 +17,7 @@ public class ModelLoading : BaseScene
     private readonly ConstantBuffer[] _modelLoadingConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
     private RHI.Texture _depthTexture;
     private readonly TextureSampler _textureSampler;
-    private readonly Assimp _assimp = Assimp.GetApi();
+    private Model[] _models;
 
     public ModelLoading(GraphicsDevice graphicsDevice) : base(graphicsDevice)
     {
@@ -106,28 +107,34 @@ public class ModelLoading : BaseScene
         });
         _modelLoadingGraphicsPipeline = _graphicsDevice.CreateGraphicsPipeline(_modelLoadingGraphicsPipelineDesc, _modelLoadingGraphicsPipelineLayout);
 
-        LoadModel("Assets/viking_room.obj");
-
-        for (int i = 0; i < _meshes!.Length; i++)
+        _models = [.. ModelExtensions.LoadModels("Assets/viking_room.obj", (path) =>
         {
-            ref var mesh = ref _meshes[i];
-            int vertexBufferSize = Marshal.SizeOf<Vertex>() * mesh.Vertices.Length;
-            mesh.VertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
+            var data = System.IO.File.ReadAllBytes(path);
+            var image = SKImage.FromEncodedData(data);
 
-            int indexBufferSize = sizeof(uint) * _meshes.First().Indices.Length;
-            mesh.IndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
+            return _graphicsDevice.CreateTextureFromImage(image);
+        })];
 
-            var vertexData = new byte[Marshal.SizeOf<Vertex>() * _meshes.First().Vertices.Length];
-            for (int j = 0; j < mesh.Vertices.Length; j++)
+        for (int i = 0; i < _models.Length; i++)
+        {
+            ref var model = ref _models[i];
+            int vertexBufferSize = Marshal.SizeOf<Vertex>() * model.Vertices.Length;
+            model.VertexBuffer = _graphicsDevice.CreateVertexBuffer(vertexBufferSize);
+
+            int indexBufferSize = sizeof(uint) * model.Indices.Length;
+            model.IndexBuffer = _graphicsDevice.CreateIndexBuffer(indexBufferSize);
+
+            var vertexData = new byte[Marshal.SizeOf<Vertex>() * model.Vertices.Length];
+            for (int j = 0; j < model.Vertices.Length; j++)
             {
-                System.Buffer.BlockCopy(mesh.Vertices[j].Bytes, 0, vertexData, Marshal.SizeOf<Vertex>() * j, Marshal.SizeOf<Vertex>());
+                System.Buffer.BlockCopy(model.Vertices[j].Bytes, 0, vertexData, Marshal.SizeOf<Vertex>() * j, Marshal.SizeOf<Vertex>());
             }
 
-            var indexData = new byte[sizeof(uint) * mesh.Indices.Length];
-            System.Buffer.BlockCopy(mesh.Indices, 0, indexData, 0, indexData.Length);
+            var indexData = new byte[sizeof(uint) * model.Indices.Length];
+            System.Buffer.BlockCopy(model.Indices, 0, indexData, 0, indexData.Length);
 
-            _graphicsDevice.CopyDataToVertexBuffer(mesh.VertexBuffer, vertexData);
-            _graphicsDevice.CopyDataToIndexBuffer(mesh.IndexBuffer, indexData);
+            _graphicsDevice.CopyDataToVertexBuffer(model.VertexBuffer, vertexData);
+            _graphicsDevice.CopyDataToIndexBuffer(model.IndexBuffer, indexData);
         }
 
         for (int i = 0; i < _modelLoadingConstantBuffers.Length; i++)
@@ -142,12 +149,12 @@ public class ModelLoading : BaseScene
             _graphicsDevice.DestroyGraphicsPipelines([_modelLoadingGraphicsPipeline]);
             _graphicsDevice.DestroyGraphicsPipelineLayouts([_modelLoadingGraphicsPipelineLayout]);
 
-            foreach (var mesh in _meshes)
+            foreach (var model in _models)
             {
-                _graphicsDevice.DestroyVertexBuffer(mesh.VertexBuffer);
-                _graphicsDevice.DestroyIndexBuffer(mesh.IndexBuffer);
+                _graphicsDevice.DestroyVertexBuffer(model.VertexBuffer!);
+                _graphicsDevice.DestroyIndexBuffer(model.IndexBuffer!);
 
-                foreach (var texture in mesh.Textures)
+                foreach (var texture in model.Textures)
                 {
                     _graphicsDevice.DestoryTexture(texture);
                 }
@@ -197,102 +204,6 @@ public class ModelLoading : BaseScene
         };
     }
 
-    private unsafe void LoadModel(string path)
-    {
-        var scene = _assimp.ImportFile(path, (uint)PostProcessSteps.Triangulate);
-
-        if (scene == null || scene->MFlags == Assimp.SceneFlagsIncomplete || scene->MRootNode == null)
-        {
-            var error = _assimp.GetErrorStringS();
-            throw new Exception(error);
-        }
-
-        ProcessNode(scene->MRootNode, scene);
-    }
-
-    private struct Mesh
-    {
-        public Vertex[] Vertices { get; set; }
-        public uint[] Indices { get; set; }
-        public List<RHI.Texture> Textures { get; set; }
-        public VertexBuffer VertexBuffer { get; set; }
-        public IndexBuffer IndexBuffer { get; set; }
-    }
-
-    private Mesh[] _meshes;
-
-    private unsafe void ProcessNode(Node* node, Scene* scene)
-    {
-        _meshes = new Mesh[node->MNumMeshes];
-        for (var i = 0; i < node->MNumMeshes; i++)
-        {
-            var mesh = scene->MMeshes[node->MMeshes[i]];
-            _meshes[i] = ProcessMesh(mesh, scene);
-
-        }
-
-        for (var i = 0; i < node->MNumChildren; i++)
-        {
-            ProcessNode(node->MChildren[i], scene);
-        }
-    }
-
-    private unsafe Mesh ProcessMesh(Silk.NET.Assimp.Mesh* mesh, Scene* scene)
-    {
-        var vertices = new Vertex[mesh->MNumVertices];
-        var indices = new List<uint>();
-        var textures = new List<RHI.Texture>();
-
-        for (uint i = 0; i < mesh->MNumVertices; i++)
-        {
-            var mv = mesh->MVertices[i];
-            var tc = mesh->MTextureCoords[0][i];
-            vertices[i] = new Vertex(new(mv.X, mv.Y, mv.Z), new(1.0f, 1.0f, 1.0f), new(tc.X, 1.0f - tc.Y));
-        }
-
-        for (uint i = 0; i < mesh->MNumFaces; i++)
-        {
-            Face face = mesh->MFaces[i];
-            for (uint j = 0; j < face.MNumIndices; j++)
-            {
-                indices.Add(face.MIndices[j]);
-            }
-        }
-
-        Material* material = scene->MMaterials[mesh->MMaterialIndex];
-
-        var diffuseMaps = LoadMaterialTextures(material, TextureType.Diffuse);
-        if (diffuseMaps.Count != 0)
-        {
-            textures.AddRange(diffuseMaps);
-        }
-
-        return new Mesh()
-        {
-            Vertices = vertices,
-            Indices = [.. indices],
-            Textures = textures
-        };
-    }
-
-    private unsafe List<RHI.Texture> LoadMaterialTextures(Material* mat, TextureType type)
-    {
-        var textureCount = _assimp.GetMaterialTextureCount(mat, type);
-        var textures = new List<RHI.Texture>();
-        for (uint i = 0; i < textureCount; i++)
-        {
-            AssimpString path;
-            _assimp.GetMaterialTexture(mat, type, i, &path, null, null, null, null, null, null);
-
-            var data = System.IO.File.ReadAllBytes(path);
-            var image = SKImage.FromEncodedData(data);
-
-            var texture = _graphicsDevice.CreateTextureFromImage(image);
-            textures.Add(texture);
-        }
-        return textures;
-    }
-
     protected override void Draw(CommandBuffer commandBuffer, int imageIndex)
     {
         var backBuffer = _graphicsDevice.GetBackBuffer(imageIndex);
@@ -336,18 +247,18 @@ public class ModelLoading : BaseScene
                     }
                 ]);
 
-                foreach (var mesh in _meshes)
+                foreach (var model in _models)
                 {
-                    for (int i = 0; i < mesh.Textures.Count; i++)
+                    for (int i = 0; i < model.Textures.Count; i++)
                     {
-                        _graphicsDevice.BindTexture(descriptorWriter, i + 1, mesh.Textures[i], _textureSampler, ImageLayout.ShaderReadOnlyOptimal, DescriptorType.CombinedImageSampler);
+                        _graphicsDevice.BindTexture(descriptorWriter, i + 1, model.Textures[i], _textureSampler, ImageLayout.ShaderReadOnlyOptimal, DescriptorType.CombinedImageSampler);
                     }
                     _graphicsDevice.UpdateDescriptorSet(descriptorWriter, descriptorSet);
 
                     _graphicsDevice.BindDescriptorSet(commandBuffer, _modelLoadingGraphicsPipelineLayout, descriptorSet);
-                    _graphicsDevice.BindVertexBuffers(commandBuffer, [mesh.VertexBuffer]);
-                    _graphicsDevice.BindIndexBuffer(commandBuffer, mesh.IndexBuffer, IndexType.Uint32);
-                    _graphicsDevice.DrawIndexed(commandBuffer, (uint)mesh.Indices.Length, 1, 0, 0, 0);
+                    _graphicsDevice.BindVertexBuffers(commandBuffer, [model.VertexBuffer!]);
+                    _graphicsDevice.BindIndexBuffer(commandBuffer, model.IndexBuffer!, IndexType.Uint32);
+                    _graphicsDevice.DrawIndexed(commandBuffer, (uint)model.Indices.Length, 1, 0, 0, 0);
                 }
             }
 

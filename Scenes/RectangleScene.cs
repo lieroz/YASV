@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using YASV.GraphicsEntities;
 using YASV.RHI;
 
 namespace YASV.Scenes;

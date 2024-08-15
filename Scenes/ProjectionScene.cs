@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Silk.NET.Maths;
+using YASV.GraphicsEntities;
 using YASV.Helpers;
 using YASV.RHI;
 
