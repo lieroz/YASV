@@ -2,7 +2,7 @@ using SkiaSharp;
 
 namespace YASV.RHI;
 
-internal class VulkanTextureWrapper(Silk.NET.Vulkan.Image image, Silk.NET.Vulkan.DeviceMemory deviceMemory, Silk.NET.Vulkan.ImageView imageView) : Texture
+internal class VulkanTextureWrapper(Silk.NET.Vulkan.Image image, Silk.NET.Vulkan.DeviceMemory deviceMemory, Silk.NET.Vulkan.ImageView imageView, uint mipLevels) : Texture(mipLevels)
 {
     public Silk.NET.Vulkan.Image Image { get; private set; } = image;
     public Silk.NET.Vulkan.DeviceMemory DeviceMemory { get; private set; } = deviceMemory;

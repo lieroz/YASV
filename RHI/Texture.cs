@@ -1,7 +1,8 @@
 namespace YASV.RHI;
 
-public class Texture
+public class Texture(uint mipLevels)
 {
+    public uint MipLevels { get; private set; } = mipLevels;
 }
 
 public class TextureSamplerDesc

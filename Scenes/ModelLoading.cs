@@ -173,6 +173,14 @@ public class ModelLoading : BaseScene
             _graphicsDevice.RecreateTexturesAction = null;
         };
 
+        uint maxLod = uint.MaxValue;
+        foreach (var model in _models)
+        {
+            foreach (var texture in model.Textures)
+            {
+                maxLod = Math.Min(maxLod, texture.MipLevels);
+            }
+        }
 
         _textureSampler = _graphicsDevice.CreateTextureSampler(
             new()
@@ -188,9 +196,9 @@ public class ModelLoading : BaseScene
                 CompareEnable = false,
                 CompareOp = CompareOp.Always,
                 MipmapMode = SamplerMipmapMode.Linear,
-                MipLodBias = 0,
-                MinLod = 0,
-                MaxLod = 0
+                MipLodBias = 0.0f,
+                MinLod = 0.0f,
+                MaxLod = maxLod
             }
         );
 
