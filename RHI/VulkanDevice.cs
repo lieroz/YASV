@@ -589,7 +589,8 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
 
         PhysicalDeviceFeatures physicalDeviceFeatures = new()
         {
-            SamplerAnisotropy = true
+            SamplerAnisotropy = true,
+            SampleRateShading = true
         };
 
         fixed (DeviceQueueCreateInfo* deviceQueueCreateInfosPtr = deviceQueueCreateInfos.ToArray())
@@ -597,7 +598,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
             PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures = new()
             {
                 SType = StructureType.PhysicalDeviceDynamicRenderingFeatures,
-                DynamicRendering = true
+                DynamicRendering = true,
             };
 
             DeviceCreateInfo deviceCreateInfo = new()
@@ -1157,7 +1158,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
         ImageBarrierInternal(commandBuffer.ToVulkanCommandBuffer(), texture.ToVulkanTexture().Image, texture.MipLevels, oldLayout.ToVulkanImageLayout(), newLayout.ToVulkanImageLayout());
     }
 
-    public override unsafe void BeginRendering(CommandBuffer commandBuffer, Texture colorTexture, Texture? depthTexture)
+    public override unsafe void BeginRendering(CommandBuffer commandBuffer, Texture colorTexture, Texture? depthTexture, Texture? msaaTexture)
     {
         var clearColor = new ClearValue(new ClearColorValue(0f, 0f, 0f, 1f));
 
@@ -1170,6 +1171,15 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
             StoreOp = AttachmentStoreOp.Store,
             ClearValue = clearColor
         };
+
+        if (msaaTexture != null)
+        {
+            colorAttachmentInfo.ImageView = msaaTexture.ToVulkanTexture().ImageView;
+            colorAttachmentInfo.ImageLayout = Silk.NET.Vulkan.ImageLayout.ColorAttachmentOptimal;
+            colorAttachmentInfo.ResolveImageLayout = Silk.NET.Vulkan.ImageLayout.AttachmentOptimalKhr;
+            colorAttachmentInfo.ResolveImageView = colorTexture.ToVulkanTexture().ImageView;
+            colorAttachmentInfo.ResolveMode = ResolveModeFlags.AverageBit;
+        }
 
         var renderingInfo = new RenderingInfo()
         {
@@ -1747,7 +1757,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
         _vk.CmdCopyBufferToImage(commandBuffer, buffer, image, Silk.NET.Vulkan.ImageLayout.TransferDstOptimal, 1, [copyRegion]);
     }
 
-    private unsafe Tuple<Image, DeviceMemory> CreateImage(int width, int height, uint mipLevels, Silk.NET.Vulkan.Format format, ImageTiling tiling, ImageUsageFlags usageFlags, MemoryPropertyFlags memoryPropertyFlags)
+    private unsafe Tuple<Image, DeviceMemory> CreateImage(int width, int height, uint mipLevels, Silk.NET.Vulkan.SampleCountFlags samples, Silk.NET.Vulkan.Format format, ImageTiling tiling, ImageUsageFlags usageFlags, MemoryPropertyFlags memoryPropertyFlags)
     {
         var imageInfo = new ImageCreateInfo()
         {
@@ -1765,7 +1775,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
             Tiling = tiling,
             InitialLayout = Silk.NET.Vulkan.ImageLayout.Undefined,
             Usage = usageFlags,
-            Samples = Silk.NET.Vulkan.SampleCountFlags.Count1Bit,
+            Samples = samples,
             SharingMode = SharingMode.Exclusive
         };
 
@@ -1888,6 +1898,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
             image.Width,
             image.Height,
             mipLevels,
+            Silk.NET.Vulkan.SampleCountFlags.Count1Bit,
             vkFormat,
             ImageTiling.Optimal,
             ImageUsageFlags.TransferSrcBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit,
@@ -1932,7 +1943,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
         return new VulkanTextureWrapper(texture, memory, view, mipLevels);
     }
 
-    public override Texture CreateTexture(int width, int height, Format format)
+    public override Texture CreateTexture(int width, int height, SampleCountFlags samples, Format format)
     {
         var usageFlags = ImageUsageFlags.ColorAttachmentBit;
         var aspectFlags = ImageAspectFlags.ColorBit;
@@ -1953,6 +1964,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
             width,
             height,
             1,
+            samples.ToVulkanSampleCountFlags(),
             vkFormat,
             ImageTiling.Optimal,
             usageFlags,

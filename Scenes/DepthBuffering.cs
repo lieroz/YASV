@@ -198,12 +198,12 @@ public class DepthBuffering : BaseScene
         );
 
         var (width, height) = _graphicsDevice.GetSwapchainSizes();
-        _depthTexture = _graphicsDevice.CreateTexture((int)width, (int)height, Format.D32_Float);
+        _depthTexture = _graphicsDevice.CreateTexture((int)width, (int)height, SampleCountFlags.Count1Bit, Format.D32_Float);
 
         _graphicsDevice.RecreateTexturesAction += (width, height) =>
         {
             _graphicsDevice.DestoryTexture(_depthTexture!);
-            _depthTexture = _graphicsDevice.CreateTexture(width, height, Format.D32_Float);
+            _depthTexture = _graphicsDevice.CreateTexture(width, height, SampleCountFlags.Count1Bit, Format.D32_Float);
         };
     }
 

@@ -15,6 +15,8 @@ public class ModelLoading : BaseScene
     private readonly GraphicsPipelineDesc _modelLoadingGraphicsPipelineDesc;
     private readonly GraphicsPipeline _modelLoadingGraphicsPipeline;
     private readonly ConstantBuffer[] _modelLoadingConstantBuffers = new ConstantBuffer[Constants.MaxFramesInFlight];
+    private const SampleCountFlags MSAASamples = SampleCountFlags.Count8Bit;
+    private RHI.Texture _msaaTexture;
     private RHI.Texture _depthTexture;
     private readonly TextureSampler _textureSampler;
     private Model[] _models;
@@ -50,9 +52,9 @@ public class ModelLoading : BaseScene
             })
             .SetMultisampleState(new()
             {
-                SampleShadingEnable = false,
-                SampleCountFlags = SampleCountFlags.Count1Bit,
-                MinSampleShading = 1.0f,
+                SampleShadingEnable = true,
+                SampleCountFlags = MSAASamples,
+                MinSampleShading = 0.2f,
                 SampleMask = null,
                 AlphaCoverageEnable = false,
                 AlphaToOneEnable = false
@@ -165,6 +167,7 @@ public class ModelLoading : BaseScene
                 _graphicsDevice.DestroyConstantBuffer(constantBuffer);
             }
 
+            _graphicsDevice.DestoryTexture(_msaaTexture!);
             _graphicsDevice.DestoryTexture(_depthTexture!);
             _graphicsDevice.DestroyTextureSampler(_textureSampler!);
         };
@@ -203,12 +206,16 @@ public class ModelLoading : BaseScene
         );
 
         var (width, height) = _graphicsDevice.GetSwapchainSizes();
-        _depthTexture = _graphicsDevice.CreateTexture((int)width, (int)height, Format.D32_Float);
+        _msaaTexture = _graphicsDevice.CreateTexture((int)width, (int)height, MSAASamples, Format.B8G8R8A8_Unorm_SRGB);
+        _depthTexture = _graphicsDevice.CreateTexture((int)width, (int)height, MSAASamples, Format.D32_Float);
 
         _graphicsDevice.RecreateTexturesAction += (width, height) =>
         {
+            _graphicsDevice.DestoryTexture(_msaaTexture!);
+            _msaaTexture = _graphicsDevice.CreateTexture(width, height, MSAASamples, Format.B8G8R8A8_Unorm_SRGB);
+
             _graphicsDevice.DestoryTexture(_depthTexture!);
-            _depthTexture = _graphicsDevice.CreateTexture(width, height, Format.D32_Float);
+            _depthTexture = _graphicsDevice.CreateTexture(width, height, MSAASamples, Format.D32_Float);
         };
     }
 
@@ -222,7 +229,7 @@ public class ModelLoading : BaseScene
             _graphicsDevice.ImageBarrier(commandBuffer, backBuffer, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal);
             _graphicsDevice.ImageBarrier(commandBuffer, _depthTexture!, ImageLayout.Undefined, ImageLayout.DepthStencilAttachmentOptimal);
 
-            _graphicsDevice.BeginRendering(commandBuffer, backBuffer, _depthTexture);
+            _graphicsDevice.BeginRendering(commandBuffer, backBuffer, _depthTexture, _msaaTexture);
             {
                 _graphicsDevice.BindGraphicsPipeline(commandBuffer, _modelLoadingGraphicsPipeline);
 

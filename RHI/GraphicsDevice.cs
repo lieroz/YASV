@@ -66,7 +66,7 @@ public abstract class GraphicsDevice(IView view)
     // TODO: generalize this, add more options
     public abstract void ImageBarrier(CommandBuffer commandBuffer, Texture texture, ImageLayout oldLayout, ImageLayout newLayout);
 
-    public abstract unsafe void BeginRendering(CommandBuffer commandBuffer, Texture colorTexture, Texture? depthTexture = null);
+    public abstract unsafe void BeginRendering(CommandBuffer commandBuffer, Texture colorTexture, Texture? depthTexture = null, Texture? msaaTexture = null);
     public abstract void EndRendering(CommandBuffer commandBuffer);
 
     public abstract void BeginCommandBuffer(CommandBuffer commandBuffer);
@@ -115,7 +115,7 @@ public abstract class GraphicsDevice(IView view)
     public abstract void BindIndexBuffer(CommandBuffer commandBuffer, IndexBuffer buffer, IndexType indexType);
 
     public abstract Texture CreateTextureFromImage(SKImage image);
-    public abstract Texture CreateTexture(int width, int height, Format format);
+    public abstract Texture CreateTexture(int width, int height, SampleCountFlags samples, Format format);
     public abstract void DestoryTexture(Texture texture);
 
     public abstract TextureSampler CreateTextureSampler(TextureSamplerDesc desc);
