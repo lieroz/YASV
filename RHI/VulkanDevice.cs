@@ -1632,6 +1632,37 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
         return commandBuffers.Last();
     }
 
+    private void BeginCommandBufferSubmitInfo(Silk.NET.Vulkan.CommandBuffer commandBuffer)
+    {
+        var beginInfo = new CommandBufferBeginInfo()
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+        };
+
+        var result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
+    }
+
+    private unsafe void EndCommandBufferSubmitInfo(Silk.NET.Vulkan.CommandBuffer commandBuffer)
+    {
+        _vk.EndCommandBuffer(commandBuffer);
+
+        var submitInfo = new SubmitInfo()
+        {
+            SType = StructureType.SubmitInfo,
+            CommandBufferCount = 1,
+            PCommandBuffers = &commandBuffer
+        };
+
+        var result = _vk.QueueSubmit(_transferQueue, 1, &submitInfo, default);
+        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
+
+        // TODO: rewrite to semaphores
+        result = _vk.QueueWaitIdle(_transferQueue);
+        VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
+    }
+
     private void ReturnTransferCommandBuffer(Silk.NET.Vulkan.CommandBuffer commandBuffer)
     {
         _vk.ResetCommandBuffer(commandBuffer, CommandBufferResetFlags.ReleaseResourcesBit);
@@ -1642,14 +1673,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
     {
         var commandBuffer = GetTransferCommandBuffer();
 
-        var beginInfo = new CommandBufferBeginInfo()
-        {
-            SType = StructureType.CommandBufferBeginInfo,
-            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
-        };
-
-        var result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
-        VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
+        BeginCommandBufferSubmitInfo(commandBuffer);
 
         var copyRegion = new BufferCopy()
         {
@@ -1659,21 +1683,8 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
         };
 
         _vk.CmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, [copyRegion]);
-        _vk.EndCommandBuffer(commandBuffer);
 
-        var submitInfo = new SubmitInfo()
-        {
-            SType = StructureType.SubmitInfo,
-            CommandBufferCount = 1,
-            PCommandBuffers = &commandBuffer
-        };
-
-        result = _vk.QueueSubmit(_transferQueue, 1, &submitInfo, default);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
-
-        // TODO: rewrite to semaphores
-        result = _vk.QueueWaitIdle(_transferQueue);
-        VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
+        EndCommandBufferSubmitInfo(commandBuffer);
 
         ReturnTransferCommandBuffer(commandBuffer);
     }
@@ -1906,35 +1917,14 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
 
         var commandBuffer = GetTransferCommandBuffer();
 
-        var beginInfo = new CommandBufferBeginInfo()
-        {
-            SType = StructureType.CommandBufferBeginInfo,
-            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
-        };
-
-        result = _vk.BeginCommandBuffer(commandBuffer, ref beginInfo);
-        VulkanException.ThrowsIf(result != Result.Success, $"vkBeginCommandBuffer failed: {result}.");
+        BeginCommandBufferSubmitInfo(commandBuffer);
 
         ImageBarrierInternal(commandBuffer, texture, mipLevels, Silk.NET.Vulkan.ImageLayout.Undefined, Silk.NET.Vulkan.ImageLayout.TransferDstOptimal);
         CopyBufferToImageInternal(commandBuffer, vkStagingBuffer.Buffer, texture, image.Width, image.Height);
         GenerateMipmaps(commandBuffer, texture, vkFormat, image.Width, image.Height, mipLevels);
         // ImageBarrierInternal(commandBuffer, texture, mipLevels, Silk.NET.Vulkan.ImageLayout.TransferDstOptimal, Silk.NET.Vulkan.ImageLayout.ShaderReadOnlyOptimal);
 
-        _vk.EndCommandBuffer(commandBuffer);
-
-        var submitInfo = new SubmitInfo()
-        {
-            SType = StructureType.SubmitInfo,
-            CommandBufferCount = 1,
-            PCommandBuffers = &commandBuffer
-        };
-
-        result = _vk.QueueSubmit(_transferQueue, 1, &submitInfo, default);
-        VulkanException.ThrowsIf(result != Result.Success, $"Couldn't submit to queue: {result}.");
-
-        // TODO: rewrite to semaphores
-        result = _vk.QueueWaitIdle(_transferQueue);
-        VulkanException.ThrowsIf(result != Result.Success, $"vkQueueWaitIdle failed: {result}.");
+        EndCommandBufferSubmitInfo(commandBuffer);
 
         ReturnTransferCommandBuffer(commandBuffer);
 

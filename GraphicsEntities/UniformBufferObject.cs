@@ -35,7 +35,7 @@ public struct UniformBufferObject
                 _projection.Row2.CopyTo(rows, 36);
                 _projection.Row3.CopyTo(rows, 40);
                 _projection.Row4.CopyTo(rows, 44);
-                System.Buffer.BlockCopy(rows, 0, bytes, 0, bytes.Length);
+                Buffer.BlockCopy(rows, 0, bytes, 0, bytes.Length);
             }
             return bytes;
         }
