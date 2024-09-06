@@ -12,6 +12,7 @@
             "console": "internalConsole",
             "stopAtEntry": false,
             "internalConsoleOptions": "openOnSessionStart",
+            "requireExactSource": false
         },
         {
             "name": "Release",
@@ -36,6 +37,7 @@
             "console": "internalConsole",
             "stopAtEntry": false,
             "internalConsoleOptions": "openOnSessionStart",
+            "requireExactSource": false
         }
     ]
 }

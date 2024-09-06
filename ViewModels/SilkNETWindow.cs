@@ -1,6 +1,10 @@
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Silk.NET.Input;
+using Silk.NET.Input.Sdl;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
 using Silk.NET.Windowing.Sdl;
@@ -51,6 +55,10 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         }
     }
 
+    private bool _isMouseDown = false;
+    private int _x = 0;
+    private int _y = 0;
+
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
         var vkApi = VulkanHelpers.GetApi();
@@ -66,10 +74,35 @@ public class SilkNETWindow : NativeControlHost, IDisposable
         {
             _window.Run(() =>
             {
-                if (_window.IsClosing)
+                Event ev = new();
+                while (sdlApi.PollEvent(ref ev) != 0)
                 {
-                    return;
+                    switch ((EventType)ev.Type)
+                    {
+                        case EventType.Mousebuttondown:
+                            {
+                                _isMouseDown = true;
+                                _x = ev.Motion.X;
+                                _y = ev.Motion.Y;
+                                break;
+                            }
+                        case EventType.Mousemotion:
+                            {
+                                if (_isMouseDown)
+                                {
+                                }
+                                break;
+                            }
+                        case EventType.Mousebuttonup:
+                            {
+                                _isMouseDown = false;
+                                break;
+                            }
+                        default:
+                            break;
+                    }
                 }
+
                 while (_sdlActions.TryDequeue(out var action))
                 {
                     action();
