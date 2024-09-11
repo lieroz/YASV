@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Silk.NET.Core;
+using Silk.NET.Core.Contexts;
 using Silk.NET.Core.Native;
 using Silk.NET.SDL;
 using Silk.NET.Vulkan;
@@ -319,7 +320,12 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
     private unsafe void CreateInstance(Sdl sdlApi, IView view)
     {
 #if DEBUG
-        VulkanException.ThrowsIf(!CheckValidationLayersSupport(), "Validation layers were requested, but none available found.");
+        if (CheckValidationLayersSupport())
+        {
+            VulkanException.ThrowsIf(!CheckValidationLayersSupport(), "Validation layers were requested, but none available found.");
+        }
+
+        Environment.SetEnvironmentVariable("VK_LAYER_PATH", $"{Directory.GetCurrentDirectory()}/Libraries/Native/Windows/Vulkan");
 #endif
 
         var applicationName = (byte*)SilkMarshal.StringToPtr("YASV");
@@ -392,7 +398,7 @@ public class VulkanDevice(Vk vkApi, IView view) : GraphicsDevice(view)
                                              DebugUtilsMessengerCallbackDataEXT* pCallbackData,
                                              void* pUserData)
     {
-        Console.WriteLine($"validation layer:" + Marshal.PtrToStringAnsi((nint)pCallbackData->PMessage));
+        Console.WriteLine($"validation layer: " + Marshal.PtrToStringAnsi((nint)pCallbackData->PMessage));
         return Vk.False;
     }
 
