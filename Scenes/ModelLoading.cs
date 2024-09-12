@@ -235,8 +235,8 @@ public class ModelLoading : BaseScene
 
                 var ubo = new UniformBufferObject()
                 {
-                    Model = Matrix4X4<float>.Identity,
-                    View = Matrix4X4.CreateLookAt<float>(new(2.0f, 2.0f, 2.0f), new(0.0f, 0.0f, 0.0f), new(0.0f, 0.0f, -1.0f)),
+                    Model = Matrix4X4.CreateRotationX(MathHelpers.DegreesToRadians(90.0f)) * Matrix4X4.CreateRotationY(MathHelpers.DegreesToRadians(-45.0f)),
+                    View = Camera.GetViewMatrix(),
                     Projection = Matrix4X4.CreatePerspectiveFieldOfView(MathHelpers.DegreesToRadians(45.0f), width / height, 0.1f, 10.0f)
                 };
 

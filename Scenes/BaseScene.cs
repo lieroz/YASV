@@ -49,4 +49,6 @@ public abstract class BaseScene(GraphicsDevice graphicsDevice) : IDisposable
     }
 
     protected abstract void Draw(CommandBuffer commandBuffer, int imageIndex);
+
+    public Camera Camera { get; set; } = new();
 }

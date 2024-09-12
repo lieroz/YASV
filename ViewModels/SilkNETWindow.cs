@@ -1,10 +1,6 @@
-using System.Collections;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Platform;
-using Silk.NET.Input;
-using Silk.NET.Input.Sdl;
 using Silk.NET.SDL;
 using Silk.NET.Windowing;
 using Silk.NET.Windowing.Sdl;
@@ -90,12 +86,24 @@ public class SilkNETWindow : NativeControlHost, IDisposable
                             {
                                 if (_isMouseDown)
                                 {
+                                    var xOffset = ev.Motion.X - _x;
+                                    var yOffset = ev.Motion.Y - _y;
+
+                                    _x = ev.Motion.X;
+                                    _y = ev.Motion.Y;
+
+                                    CurrentScene?.Camera.ProcessMouseMotion(xOffset, yOffset);
                                 }
                                 break;
                             }
                         case EventType.Mousebuttonup:
                             {
                                 _isMouseDown = false;
+                                break;
+                            }
+                        case EventType.Mousewheel:
+                            {
+                                CurrentScene?.Camera.ProcessMouseWheel(ev.Wheel.Y);
                                 break;
                             }
                         default:
