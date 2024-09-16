@@ -3,6 +3,14 @@ using YASV.Helpers;
 
 public class Camera
 {
+    public enum Direction
+    {
+        Forward,
+        Left,
+        Backward,
+        Right
+    }
+
     private const float MouseSensitivity = 0.1f;
     private const float MovementSpeed = 0.1f;
 
@@ -18,6 +26,25 @@ public class Camera
     public Camera()
     {
         UpdateCameraVectors();
+    }
+
+    public void ProcessKeyboard(Direction direction)
+    {
+        switch (direction)
+        {
+            case Direction.Forward:
+                _position += _front * MovementSpeed;
+                break;
+            case Direction.Left:
+                _position -= _right * MovementSpeed;
+                break;
+            case Direction.Backward:
+                _position -= _front * MovementSpeed;
+                break;
+            case Direction.Right:
+                _position += _right * MovementSpeed;
+                break;
+        }
     }
 
     public void ProcessMouseMotion(float xOffset, float yOffset)
