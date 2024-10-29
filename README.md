@@ -6,4 +6,3 @@
 * RHI (Rendering Hardware Interface) only supports Vulkan graphics API right now.
 * Vulkan backend is hugely based on [Vulkan tutorial](https://vulkan-tutorial.com/).
 * Some code parts use ideas from [Vulkan Guide](https://vkguide.dev/).
-* [Learn OpenGL](https://learnopengl.com/) is used as a reference for graphics algorightms.
